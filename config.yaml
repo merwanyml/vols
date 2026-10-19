@@ -1,0 +1,55 @@
+# ============================================================
+#  CONFIGURATION : c'est le seul fichier que tu as besoin de modifier
+# ============================================================
+
+# --- Aéroports de départ -----------------------------------
+# Pour ajouter un aéroport : ajoute son code (3 lettres) dans la liste.
+aeroports_week_end: [LIL, CDG, ORY, BRU, CRL]
+aeroports_long_courrier: [CDG, BRU, AMS, LIL]
+
+# --- Week-ends (court séjour en Europe) ---------------------
+week_end:
+  actif: true
+  nb_semaines: 12              # combien de semaines à l'avance on regarde
+  departs: [jeudi, vendredi]   # jours de départ possibles
+  retours: [dimanche, lundi]   # jours de retour possibles
+  destinations: [
+    BCN, MAD, LIS, OPO, FCO, MXP, VCE, NAP, ATH, PRG, BUD, VIE, BER, WAW,
+    KRK, DUB, EDI, LON, MLA, PMI, AGP, SVQ, VLC, NCE, CPH, ARN, OSL, ZAG, TIA,
+  ]
+  # Prix maximum en euros : si un aller-retour passe sous ce prix,
+  # tu es prévenu même sans historique (laisse 0 pour désactiver)
+  prix_max_alerte: 60
+
+# --- Longs séjours (5 jours et plus, monde entier) ----------
+long_sejour:
+  actif: true
+  nb_semaines: 40
+  # Durées testées en séjour "normal"
+  durees: [5, 7]
+  # À partir de ce mois (7 = juillet) jusqu'à ce mois, on teste aussi 2 et 3 semaines
+  mois_longs_sejours: [7, 8]
+  durees_mois_longs: [7, 14, 21]
+  destinations: [
+    JFK, YUL, MIA, LAX, MEX, CUN, BKK, SGN, HAN, SIN, KUL, DPS, TYO, ICN,
+    DXB, DOH, CMN, RAK, TUN, CAI, DEL, BOM, CPT, NBO, ZNZ, MRU, RUN,
+    PTP, FDF, PUJ, HAV, GRU, EZE, LIM, BOG, PPT,
+  ]
+  prix_max_alerte: 400
+
+# --- Comment l'outil juge qu'un prix est une bonne affaire --
+detection:
+  # Alerte si le prix est au moins X % moins cher que le prix habituel de la route
+  reduction_minimum: 30
+  # Nombre minimum de prix relevés avant de comparer avec l'historique
+  echantillon_minimum: 6
+  # Utiliser aussi l'avis de Google ("prix bas") comme signal
+  utiliser_avis_google: true
+
+# --- Limites techniques -------------------------------------
+limites:
+  # Nombre maximum de recherches par exécution quotidienne.
+  # Les combinaisons sont tirées au hasard : sur plusieurs jours, tout est couvert.
+  recherches_max: 250
+  pause_secondes: 1.5
+  max_notifications: 8
