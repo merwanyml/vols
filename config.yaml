@@ -3,9 +3,10 @@
 # ============================================================
 
 # --- Aéroports de départ -----------------------------------
-# Pour ajouter un aéroport : ajoute son code (3 lettres) dans la liste.
-aeroports_week_end: [LIL, CDG, ORY, BRU, CRL]
-aeroports_long_courrier: [CDG, BRU, AMS, LIL]
+# Lille : LIL | Paris : CDG, ORY, BVA (Beauvais, low cost) | Bruxelles : BRU, CRL (Charleroi, low cost)
+aeroports_week_end: [LIL, CDG, ORY, BVA, BRU, CRL]
+# Long-courriers : pas de Lille, pas de low cost
+aeroports_long_courrier: [CDG, ORY, BRU, AMS]
 
 # --- Week-ends (court séjour en Europe) ---------------------
 week_end:
@@ -13,29 +14,74 @@ week_end:
   nb_semaines: 12              # combien de semaines à l'avance on regarde
   departs: [jeudi, vendredi]   # jours de départ possibles
   retours: [dimanche, lundi]   # jours de retour possibles
+  directs_seulement: true      # seulement les vols directs (sans escale)
   destinations: [
     BCN, MAD, LIS, OPO, FCO, MXP, VCE, NAP, ATH, PRG, BUD, VIE, BER, WAW,
     KRK, DUB, EDI, LON, MLA, PMI, AGP, SVQ, VLC, NCE, CPH, ARN, OSL, ZAG, TIA,
   ]
-  # Prix maximum en euros : si un aller-retour passe sous ce prix,
-  # tu es prévenu même sans historique (laisse 0 pour désactiver)
+  # Si un aller-retour passe sous ce prix (en €), tu es prévenu même sans historique
   prix_max_alerte: 60
 
-# --- Longs séjours (5 jours et plus, monde entier) ----------
+# --- Longs séjours (monde entier) ---------------------------
+# EN PAUSE pour l'instant : passe "actif" à true quand tu veux les relancer.
+# Ils ne sont cherchés que pendant tes périodes de disponibilité.
+# Le départ ET le retour doivent tenir dans la période.
+# Pense à mettre à jour les dates chaque année.
 long_sejour:
-  actif: true
-  nb_semaines: 40
-  # Durées testées en séjour "normal"
-  durees: [5, 7]
-  # À partir de ce mois (7 = juillet) jusqu'à ce mois, on teste aussi 2 et 3 semaines
-  mois_longs_sejours: [7, 8]
-  durees_mois_longs: [7, 14, 21]
+  actif: false
+  directs_seulement: false
+  periodes:
+    - nom: Noël
+      debut: "2026-12-23"
+      fin: "2027-01-03"
+      durees: [5, 7, 9]
+      pas_jours: 1             # un départ chaque jour
+    - nom: Avril
+      debut: "2027-04-10"
+      fin: "2027-04-25"
+      durees: [5, 7, 10]
+      pas_jours: 1
+    - nom: Été
+      debut: "2027-07-01"
+      fin: "2027-08-31"
+      durees: [7, 14, 21]
+      pas_jours: 3             # un départ tous les 3 jours
   destinations: [
     JFK, YUL, MIA, LAX, MEX, CUN, BKK, SGN, HAN, SIN, KUL, DPS, TYO, ICN,
     DXB, DOH, CMN, RAK, TUN, CAI, DEL, BOM, CPT, NBO, ZNZ, MRU, RUN,
     PTP, FDF, PUJ, HAV, GRU, EZE, LIM, BOG, PPT,
   ]
   prix_max_alerte: 400
+
+# --- Plafonds d'alerte selon la DISTANCE (pas la durée du séjour) ---
+# Si l'aller-retour passe sous le plafond de sa zone, tu es prévenu tout de suite,
+# même sans historique. Ce sont des estimations de départ, à ajuster selon ce que
+# tu vois passer. Une destination absente de cette liste utilise "prix_max_alerte"
+# du week-end ou du long séjour (plus haut dans ce fichier).
+zones:
+  - nom: Europe proche
+    plafond: 60
+    destinations: [LON, DUB, EDI, BCN, MAD, VLC, PMI, NCE, MXP, VCE, FCO, NAP, PRG, VIE,
+                   BER, BUD, KRK, WAW, ZAG, CPH, LIS, OPO, SVQ, AGP]
+  - nom: Europe éloignée
+    plafond: 90
+    destinations: [OSL, ARN, ATH, MLA, TIA]
+  - nom: Maghreb
+    plafond: 130
+    destinations: [CMN, RAK, TUN]
+  - nom: Égypte et Golfe
+    plafond: 300
+    destinations: [CAI, DXB, DOH]
+  - nom: Amérique du Nord (côte est)
+    plafond: 350
+    destinations: [JFK, YUL, MIA]
+  - nom: Très long courrier
+    plafond: 500
+    destinations: [LAX, MEX, CUN, BKK, SGN, HAN, SIN, KUL, DPS, TYO, ICN, DEL, BOM, CPT, NBO,
+                   ZNZ, MRU, RUN, PTP, FDF, PUJ, HAV, GRU, EZE, LIM, BOG]
+  - nom: Polynésie
+    plafond: 1000
+    destinations: [PPT]
 
 # --- Comment l'outil juge qu'un prix est une bonne affaire --
 detection:
@@ -46,10 +92,15 @@ detection:
   # Utiliser aussi l'avis de Google ("prix bas") comme signal
   utiliser_avis_google: true
 
-# --- Limites techniques -------------------------------------
+# --- Limites techniques (PAR LANCEMENT, il y en a 4 par jour) --
 limites:
-  # Nombre maximum de recherches par exécution quotidienne.
-  # Les combinaisons sont tirées au hasard : sur plusieurs jours, tout est couvert.
-  recherches_max: 250
-  pause_secondes: 1.5
+  # L'outil s'arrête à la première de ces deux limites.
+  recherches_max: 600
+  duree_max_minutes: 55
+  # Part des recherches consacrée aux week-ends quand les longs séjours sont actifs
+  part_week_end: 0.7
+  pause_secondes: 1.0
+  # Une route sans aucun vol 3 fois de suite est mise de côté 30 jours
+  routes_vides_avant_pause: 3
+  routes_vides_jours_pause: 30
   max_notifications: 8
