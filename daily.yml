@@ -2,7 +2,8 @@ name: Chercher les offres de vols
 
 on:
   schedule:
-    - cron: "0 5 * * *"   # tous les jours vers 7h (heure de Paris en été), 6h en hiver
+    # 4 lancements par jour (heures UTC : 6h, 12h, 18h et minuit, heure de Paris en été)
+    - cron: "0 4,10,16,22 * * *"
   workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
     inputs:
       test_notification:
@@ -13,10 +14,15 @@ on:
 permissions:
   contents: write
 
+# un seul lancement à la fois (évite les conflits sur l'historique)
+concurrency:
+  group: vols
+  cancel-in-progress: false
+
 jobs:
   chercher:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,5 +41,5 @@ jobs:
         run: |
           git config user.name "vols-bot"
           git config user.email "vols-bot@users.noreply.github.com"
-          git add history.json notified.json || true
-          git diff --cached --quiet || (git commit -m "Mise à jour de l'historique" && git push)
+          git add history.json notified.json vus.json || true
+          git diff --cached --quiet || (git commit -m "Mise à jour de l'historique" && git pull --rebase && git push)
