@@ -1,2 +1,6 @@
 fast-flights
 pyyaml
+typing_extensions
+requests
+selectolax
+primp
