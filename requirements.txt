@@ -3,4 +3,4 @@ pyyaml
 typing_extensions
 requests
 selectolax
-primp
+primp<0.10
