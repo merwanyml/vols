@@ -1,10 +1,14 @@
 # ============================================================
-#  LONG COURRIER : longs séjours dans le monde depuis Paris
+#  LONG COURRIER : longs séjours dans le monde depuis Paris, Bruxelles, Amsterdam
 #  (le court courrier / week-ends a son propre fichier : config_court.yaml)
 # ============================================================
 
-# Paris-Roissy (CDG) et Paris-Orly (ORY)
-aeroports_long_courrier: [CDG, ORY]
+# Paris-Roissy (CDG), Paris-Orly (ORY), Bruxelles-Zaventem (BRU), Amsterdam-Schiphol (AMS)
+aeroports_long_courrier: [CDG, ORY, BRU, AMS]
+
+# Part des recherches par aéroport de départ : 1 = normal, 0.4 = environ 2,5 fois moins souvent.
+# Amsterdam est plus loin, donc cherché moins souvent que Paris et Zaventem.
+poids_aeroports: {CDG: 1, ORY: 1, BRU: 1, AMS: 0.4}
 
 # Le départ ET le retour doivent tenir dans la période.
 # Pense à mettre à jour les dates chaque année.
@@ -64,14 +68,23 @@ detection:
   echantillon_minimum: 6
   # Utiliser aussi l'avis de Google ("prix bas") comme signal
   utiliser_avis_google: true
+  # Record : l'outil retient le meilleur prix jamais relevé sur chaque route
+  # (depuis le début du script) et te prévient quand un vol l'égale, le bat
+  # ou s'en approche de quelques euros.
+  record_prix:
+    actif: true
+    echantillon_minimum: 15     # relevés nécessaires sur la route avant de parler de "record"
+    marge_euros: 10             # alerte si le prix est à moins de 10 € du minimum enregistré
+    garde_fou_x_plafond: 1.5    # pas d'alerte record si le prix dépasse 1,5 × le plafond de la zone
 
 # --- Limites techniques (PAR LANCEMENT, il y en a 2 par jour) --
 limites:
   # L'outil s'arrête à la première de ces deux limites.
-  recherches_max: 400
-  duree_max_minutes: 40
-  # Pause entre deux recherches, tirée au hasard entre ces deux valeurs (en secondes)
-  pause_secondes: [0.8, 1.8]
+  recherches_max: 1000
+  duree_max_minutes: 110
+  # Pause entre deux recherches, tirée au hasard entre ces deux valeurs (en secondes).
+  # Plus c'est lent, moins Google nous remarque : le temps d'exécution n'a pas d'importance.
+  pause_secondes: [2.0, 4.5]
   # Arrêt si autant d'échecs d'affilée (signe que Google nous freine)
   echecs_consecutifs_max: 25
   # Une route sans aucun vol 3 fois de suite est mise de côté 30 jours
