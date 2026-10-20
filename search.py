@@ -91,13 +91,32 @@ def combo_key(t):
     return f"{kind[0]}|{o}|{dest}|{d:%y%m%d}|{r:%y%m%d}"
 
 
-def pick(trips, n, vus):
+def pick(trips, n, vus, poids=None):
     """Prend les n combinaisons cherchées le moins récemment (jamais cherchées d'abord).
-    Tout est donc couvert avant de refaire deux fois la même recherche."""
+    Tout est donc couvert avant de refaire deux fois la même recherche.
+    poids : part de chaque aéroport de départ (ex. {"AMS": 0.4} = cherché moins souvent)."""
     if n <= 0 or not trips:
         return []
     rnd = random.Random()
-    return sorted(trips, key=lambda t: (vus.get(combo_key(t), ""), rnd.random()))[:n]
+
+    def plus_anciennes_d_abord(lst):
+        return sorted(lst, key=lambda t: (vus.get(combo_key(t), ""), rnd.random()))
+
+    if not poids:
+        return plus_anciennes_d_abord(trips)[:n]
+    groupes = {}
+    for t in trips:
+        groupes.setdefault(t[1], []).append(t)
+    total = sum(float(poids.get(o, 1)) for o in groupes)
+    sel = []
+    for o, g in groupes.items():
+        quota = int(n * float(poids.get(o, 1)) / total)
+        sel += plus_anciennes_d_abord(g)[:quota]
+    if len(sel) < n:   # arrondis, ou aéroport dont tout a déjà été pris : on complète
+        pris = {combo_key(t) for t in sel}
+        reste = plus_anciennes_d_abord([t for t in trips if combo_key(t) not in pris])
+        sel += reste[:n - len(sel)]
+    return sel[:n]
 
 
 # ---------------------------------------------------------------
@@ -219,21 +238,33 @@ def plafond(cfg, kind, dest):
     return section.get("prix_max_alerte", 0), "plafond par défaut"
 
 
-def evaluate(cfg, kind, dest, price, google_opinion, history_prices):
-    """Retourne (est_une_offre, raison, prix_habituel)."""
+def evaluate(cfg, kind, dest, price, google_opinion, history_prices, record=None):
+    """Retourne (est_une_offre, raisons, prix_habituel).
+    record = minimum déjà enregistré pour cette route : {"p": prix_min, "n": nb_de_relevés}."""
     det = cfg["detection"]
     seuil_abs, zone = plafond(cfg, kind, dest)
-    median = None
+    raisons, median = [], None
     if det.get("baisse_vs_historique", True) and len(history_prices) >= det["echantillon_minimum"]:
         median = statistics.median(history_prices)
         if price <= median * (1 - det["reduction_minimum"] / 100):
             pct = round((1 - price / median) * 100)
-            return True, f"{pct}% sous le prix habituel (~{round(median)} €)", median
+            raisons.append(f"{pct}% sous le prix habituel (~{round(median)} €)")
+    # Record : le meilleur prix jamais relevé sur cette route depuis le début
+    rec = det.get("record_prix") or {}
+    if rec.get("actif") and record and record["n"] >= rec.get("echantillon_minimum", 15):
+        garde_fou = seuil_abs * rec.get("garde_fou_x_plafond", 1.5) if seuil_abs else None
+        if garde_fou is None or price <= garde_fou:   # évite un "record" qui reste un prix élevé
+            if price < record["p"]:
+                raisons.append(f"🏆 nouveau record : {price} € (ancien minimum {record['p']} €)")
+            elif price == record["p"]:
+                raisons.append(f"🏆 égale le meilleur prix enregistré ({record['p']} €)")
+            elif price <= record["p"] + rec.get("marge_euros", 5):
+                raisons.append(f"🏆 à {price - record['p']} € du meilleur prix enregistré ({record['p']} €)")
     if seuil_abs and price <= seuil_abs:
-        return True, f"sous ton plafond de {seuil_abs} € ({zone})", median
+        raisons.append(f"sous ton plafond de {seuil_abs} € ({zone})")
     if det.get("utiliser_avis_google") and google_opinion == "low" and median and price <= median * 0.85:
-        return True, "Google indique un prix bas", median
-    return False, "", median
+        raisons.append("Google indique un prix bas")
+    return bool(raisons), "\n".join(raisons), median
 
 
 # ---------------------------------------------------------------
@@ -361,6 +392,7 @@ def main(config_path, data_dir):
     vus = load_json(vus_file, {})
     lim = cfg["limites"]
     vides = history.setdefault("_vides", {})
+    minimums = history.setdefault("_min", {})   # meilleur prix relevé par route depuis le début
 
     # on oublie les combinaisons dont le départ est passé
     limite_passe = f"{today:%y%m%d}"
@@ -378,7 +410,8 @@ def main(config_path, data_dir):
         n_wk = int(lim["recherches_max"] * lim.get("part_week_end", 0.7))
     else:
         n_wk = lim["recherches_max"] if wk else 0
-    trips = pick(wk, n_wk, vus) + pick(lg, lim["recherches_max"] - n_wk, vus)
+    poids = cfg.get("poids_aeroports")
+    trips = pick(wk, n_wk, vus, poids) + pick(lg, lim["recherches_max"] - n_wk, vus, poids)
     random.shuffle(trips)
     print(f"{len(trips)} recherches prévues ({len(wk)} week-end et {len(lg)} longs séjours possibles)")
 
@@ -443,7 +476,12 @@ def main(config_path, data_dir):
         vides.pop(key, None)
         price, opinion, info = res
         past = [h["p"] for h in history.get(key, [])]
-        good, why, median = evaluate(cfg, kind, dest, price, opinion, past)
+        prev = dict(minimums[key]) if key in minimums else None   # minimum AVANT ce relevé
+        good, why, median = evaluate(cfg, kind, dest, price, opinion, past, prev)
+        m = minimums.setdefault(key, {"p": price, "n": 0, "d": today.isoformat(), "dep": d.isoformat()})
+        m["n"] += 1
+        if price < m["p"]:
+            m.update(p=price, d=today.isoformat(), dep=d.isoformat())
         if cfg["detection"].get("baisse_vs_historique", True):   # inutile de garder les prix sinon
             history.setdefault(key, []).append({"p": price, "c": today.isoformat()})
             history[key] = history[key][-300:]
@@ -453,6 +491,8 @@ def main(config_path, data_dir):
                 notified[nkey] = price
                 seuil = plafond(cfg, kind, dest)[0]
                 score = (1 - price / median) if median else ((1 - price / seuil) if seuil else 0.2)
+                if "🏆" in why:
+                    score += 1.0   # les records passent en premier
                 deals.append({"kind": kind, "origin": o, "dest": dest, "d": d, "r": r,
                               "price": price, "why": why, "score": score, "info": info,
                               "link": lien_vol(o, dest, d, r, directs),
