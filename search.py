@@ -29,6 +29,7 @@ ROOT = Path(__file__).parent
 
 JOURS = {"lundi": 0, "mardi": 1, "mercredi": 2, "jeudi": 3, "vendredi": 4, "samedi": 5, "dimanche": 6}
 JOURS_ABR = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
+JOURS_NOMS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 
 
 def jour_fr(d):
@@ -44,6 +45,10 @@ def week_end_trips(cfg, today):
         return []
     departs = [JOURS[j] for j in wk["departs"]]
     retours = [JOURS[j] for j in wk["retours"]]
+    # retours supplémentaires acceptés seulement à partir d'une date (ex. lundi dès janvier)
+    sup = wk.get("retours_supplementaires") or {}
+    sup_date = date.fromisoformat(str(sup["a_partir_du"])) if sup else None
+    sup_jours = [JOURS[j] for j in sup.get("jours", [])]
     # destinations : liste explicite, sinon toutes celles des zones
     dests = wk.get("destinations") or [d for z in cfg.get("zones", []) for d in z["destinations"]]
     trips = []
@@ -53,7 +58,7 @@ def week_end_trips(cfg, today):
             continue
         for k in range(1, 5):
             r = d + timedelta(days=k)
-            if r.weekday() in retours:
+            if r.weekday() in retours or (sup and r >= sup_date and r.weekday() in sup_jours):
                 for o in cfg["aeroports_week_end"]:
                     for dest in dests:
                         trips.append(("week_end", o, dest, d, r))
@@ -168,41 +173,122 @@ def taux_vers_eur(code):
     return rate
 
 
-def search_price(origin, dest, d, r, directs=False):
-    """Retourne (prix_aller_retour_min_en_euros, avis_google, infos_du_vol) ou None."""
-    from fast_flights import FlightData, Passengers
+HORS_HORAIRE = "hors_horaire"   # des vols existent, mais aucun dans la fenêtre horaire voulue
 
-    flight_data = [
-        FlightData(date=d.isoformat(), from_airport=origin, to_airport=dest),
-        FlightData(date=r.isoformat(), from_airport=dest, to_airport=origin),
-    ]
+
+def minutes_du_jour(texte):
+    """'7:30 PM on Thu, Nov 26' -> 1170 ; '19:30' -> 1170 ; illisible -> None."""
+    m = re.search(r"(\d{1,2}):(\d{2})\s*([AaPp][Mm])?", str(texte))
+    if not m:
+        return None
+    h, mn, ap = int(m.group(1)), int(m.group(2)), m.group(3)
+    if ap:
+        h = h % 12 + (12 if ap.lower() == "pm" else 0)
+    return h * 60 + mn
+
+
+def fenetre_horaire(regle):
+    """{'apres': '19:00'} ou {'avant': '12:00'} -> (minimum, maximum) en minutes, sinon None."""
+    if not regle:
+        return None
+    lo = minutes_du_jour(regle["apres"]) if "apres" in regle else 0
+    hi = minutes_du_jour(regle["avant"]) if "avant" in regle else 24 * 60
+    return lo, hi
+
+
+ILLISIBLES = []   # exemples d'horaires que le filtre n'a pas su lire (affichés dans le journal)
+
+
+def dans_fenetre(depart, fenetre):
+    if not fenetre:
+        return True
+    mn = minutes_du_jour(depart)
+    if mn is None:      # horaire illisible : on ne rejette pas le vol
+        if len(ILLISIBLES) < 3:
+            ILLISIBLES.append(str(depart)[:40])
+        return True
+    return fenetre[0] <= mn <= fenetre[1]
+
+
+def _resultat(flight_data, trip):
+    from fast_flights import Passengers
     pax = Passengers(adults=1, children=0, infants_in_seat=0, infants_on_lap=0)
     try:
         # on demande directement les prix en euros à Google
         from fast_flights import create_filter, get_flights_from_filter
-        flt = create_filter(flight_data=flight_data, trip="round-trip", seat="economy", passengers=pax)
-        result = get_flights_from_filter(flt, currency="EUR", mode="fallback")
+        flt = create_filter(flight_data=flight_data, trip=trip, seat="economy", passengers=pax)
+        return get_flights_from_filter(flt, currency="EUR", mode="fallback")
     except (ImportError, TypeError):
         from fast_flights import get_flights
-        result = get_flights(flight_data=flight_data, trip="round-trip", seat="economy",
-                             passengers=pax, fetch_mode="fallback")
+        return get_flights(flight_data=flight_data, trip=trip, seat="economy",
+                           passengers=pax, fetch_mode="fallback")
 
+
+def _candidats(result, directs, fenetre):
+    """Vols retenus (directs si demandé, dans la fenêtre horaire) avec leur prix en euros.
+    Retourne (candidats, nombre_de_vols_directs, nombre_dans_la_fenetre)."""
     flights = list(result.flights)
     if directs:
         flights = [f for f in flights
                    if str(getattr(f, "stops", 0)).strip().lower() in ("0", "none", "nonstop")]
+    n_directs = len(flights)
+    flights = [f for f in flights if dans_fenetre(getattr(f, "departure", ""), fenetre)]
     cands = []
     for f in flights:
         p = parse_price(f.price)
         if p:
             # tout est converti en euros, quelle que soit la devise renvoyée par Google
             cands.append((round(p * taux_vers_eur(detect_devise(f.price))), f))
+    return cands, n_directs, len(flights)
+
+
+def _infos(vol):
+    return {"compagnie": str(getattr(vol, "name", "") or ""),
+            "depart": str(getattr(vol, "departure", "") or "")}
+
+
+def search_price(origin, dest, d, r, directs=False, fenetre=None):
+    """Retourne (prix_aller_retour_min_en_euros, avis_google, infos_du_vol), ou None s'il n'y a
+    aucun vol, ou HORS_HORAIRE si des vols existent mais aucun dans la fenêtre horaire de l'aller."""
+    from fast_flights import FlightData
+
+    result = _resultat([
+        FlightData(date=d.isoformat(), from_airport=origin, to_airport=dest),
+        FlightData(date=r.isoformat(), from_airport=dest, to_airport=origin),
+    ], "round-trip")
+    cands, n_directs, n_fenetre = _candidats(result, directs, fenetre)
+    if n_directs and not n_fenetre:
+        return HORS_HORAIRE
     if not cands:
         return None
     prix, best = min(cands, key=lambda c: c[0])
-    info = {"compagnie": str(getattr(best, "name", "") or ""),
-            "depart": str(getattr(best, "departure", "") or "")}
-    return prix, getattr(result, "current_price", None), info
+    return prix, getattr(result, "current_price", None), _infos(best)
+
+
+def search_retour(origin, dest, jour, directs=False, fenetre=None):
+    """Vérifie le vol retour (dest -> origin) ce jour-là, en aller simple, dans la fenêtre horaire.
+    Retourne (prix_aller_simple_en_euros, infos_du_vol) ou None."""
+    from fast_flights import FlightData
+
+    result = _resultat([FlightData(date=jour.isoformat(), from_airport=dest, to_airport=origin)],
+                       "one-way")
+    cands, _, _ = _candidats(result, directs, fenetre)
+    if not cands:
+        return None
+    prix, best = min(cands, key=lambda c: c[0])
+    return prix, _infos(best)
+
+
+def verifier_retour(origin, dest, jour, directs, fenetre):
+    """Statut du retour : ok (avec horaire et prix indicatif), aucun, ou inconnu."""
+    try:
+        res = search_retour(origin, dest, jour, directs, fenetre)
+    except Exception as e:
+        return {"statut": "aucun"} if est_vide(e) else {"statut": "inconnu"}
+    if res is None:
+        return {"statut": "aucun"}
+    prix, info = res
+    return {"statut": "ok", "prix": prix, **info}
 
 
 def est_vide(exc):
@@ -356,7 +442,16 @@ def send_alerts(deals, cfg):
                f"{dl['why']}")
         vol = " · ".join(x for x in (dl["info"].get("compagnie"), dl["info"].get("depart")) if x)
         if vol:
-            msg += f"\n✈️ {vol}"
+            msg += f"\n✈️ Aller : {vol}"
+        rt = dl.get("retour")
+        if rt:
+            if rt["statut"] == "ok":
+                msg += (f"\n🛬 Retour : {rt.get('depart', '')} · {rt.get('compagnie', '')}"
+                        f" · ~{rt['prix']} € l'aller simple (indicatif)")
+            elif rt["statut"] == "aucun":
+                msg += "\n⚠️ Pas de retour direct trouvé à l'horaire voulu : vérifie avant de réserver"
+            else:
+                msg += "\n⚠️ Retour non vérifié : vérifie l'horaire avant de réserver"
         lines.append(f"{title}\n{msg}\n{dl['link']}\n(secours : {dl['link2']})\n")
         if topic:
             try:
@@ -421,7 +516,7 @@ def main(config_path, data_dir):
         print("Destinations sans zone de plafond (plafond par défaut utilisé):", ", ".join(sans_zone))
 
     t0 = time.time()
-    deals, ok, fails = [], 0, 0
+    deals, ok, fails, hors = [], 0, 0, 0
     empties, succeeded, recent_empty = [], set(), []
     consec_echecs, bloque = 0, False
     for t in trips:
@@ -433,9 +528,13 @@ def main(config_path, data_dir):
             continue
         section = cfg["week_end" if kind == "week_end" else "long_sejour"]
         directs = bool(section.get("directs_seulement"))
+        horaires = section.get("horaires") or {}
+        fen = None
+        if kind == "week_end":   # fenêtre horaire de l'aller (ex. jeudi soir tard, vendredi matin)
+            fen = fenetre_horaire((horaires.get("depart") or {}).get(JOURS_NOMS[d.weekday()]))
         res, erreur = None, None
         try:
-            res = search_price(o, dest, d, r, directs)
+            res = search_price(o, dest, d, r, directs, fen)
         except Exception as e:
             if not est_vide(e):   # "aucun vol" n'est pas une vraie erreur
                 erreur = e
@@ -460,6 +559,12 @@ def main(config_path, data_dir):
         pause(lim)
         key = route_key(kind, o, dest)
         vus[combo_key(t)] = now
+        if res == HORS_HORAIRE:   # la route existe, simplement pas à l'horaire voulu ce jour-là
+            hors += 1
+            succeeded.add(key)
+            vides.pop(key, None)
+            recent_empty = []
+            continue
         if not res:
             empties.append(key)
             recent_empty.append(combo_key(t))
@@ -488,6 +593,14 @@ def main(config_path, data_dir):
         if good:
             nkey = f"{key}|{d}|{r}"
             if nkey not in notified or price < notified[nkey]:
+                retour = None
+                if kind == "week_end":   # le retour est-il à l'horaire voulu (ex. dimanche soir) ?
+                    regle = (horaires.get("retour") or {}).get(JOURS_NOMS[r.weekday()])
+                    if regle:
+                        retour = verifier_retour(o, dest, r, directs, fenetre_horaire(regle))
+                        pause(lim)
+                        if retour["statut"] == "aucun" and section.get("retour_strict"):
+                            continue   # pas de retour au bon horaire : pas d'alerte
                 notified[nkey] = price
                 seuil = plafond(cfg, kind, dest)[0]
                 score = (1 - price / median) if median else ((1 - price / seuil) if seuil else 0.2)
@@ -495,6 +608,7 @@ def main(config_path, data_dir):
                     score += 1.0   # les records passent en premier
                 deals.append({"kind": kind, "origin": o, "dest": dest, "d": d, "r": r,
                               "price": price, "why": why, "score": score, "info": info,
+                              "retour": retour,
                               "link": lien_vol(o, dest, d, r, directs),
                               "link2": lien_recherche(o, dest, d, r)})
 
@@ -512,8 +626,11 @@ def main(config_path, data_dir):
 
     mins = (time.time() - t0) / 60
     cadence = f"{mins * 60 / max(1, total):.1f} s par recherche" if total else ""
-    print(f"{ok} prix relevés, {len(empties)} sans résultat, {fails} échecs, "
+    print(f"{ok} prix relevés, {hors} hors horaire, {len(empties)} sans résultat, {fails} échecs, "
           f"{len(deals)} offre(s) en {mins:.1f} min. {cadence}")
+    if ILLISIBLES:
+        print("Attention : horaires illisibles, le filtre horaire n'a pas agi sur ces vols. Exemples :",
+              ILLISIBLES)
     mises_de_cote = sorted(
         f"{nom(k.split('|')[1])}→{nom(k.split('|')[2])}"
         for k, v in vides.items() if v["n"] >= lim["routes_vides_avant_pause"])
