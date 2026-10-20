@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Détecteur d'offres de vols : cherche, compare, te prévient.
+"""Moteur de recherche d'offres de vols.
 
-Lancé plusieurs fois par jour par GitHub Actions (voir .github/workflows/daily.yml).
-Tout se règle dans config.yaml.
+Il est utilisé par deux petits scripts :
+  - court_courrier.py  (week-ends depuis Lille, Beauvais, Charleroi)
+  - long_courrier.py   (longs séjours depuis Paris)
+Chacun a sa configuration (config_court.yaml / config_long.yaml) et son propre historique.
 """
+import base64
 import json
 import os
 import random
@@ -23,9 +26,6 @@ import yaml
 from noms import nom
 
 ROOT = Path(__file__).parent
-HISTORY_FILE = ROOT / "history.json"    # prix relevés par route
-NOTIFIED_FILE = ROOT / "notified.json"  # offres déjà signalées
-VUS_FILE = ROOT / "vus.json"            # date de la dernière recherche de chaque combinaison
 
 JOURS = {"lundi": 0, "mardi": 1, "mercredi": 2, "jeudi": 3, "vendredi": 4, "samedi": 5, "dimanche": 6}
 JOURS_ABR = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
@@ -39,11 +39,13 @@ def jour_fr(d):
 #  1. Génération des combinaisons (type, départ, destination, aller, retour)
 # ---------------------------------------------------------------
 def week_end_trips(cfg, today):
-    wk = cfg["week_end"]
+    wk = cfg.get("week_end", {})
     if not wk.get("actif"):
         return []
     departs = [JOURS[j] for j in wk["departs"]]
     retours = [JOURS[j] for j in wk["retours"]]
+    # destinations : liste explicite, sinon toutes celles des zones
+    dests = wk.get("destinations") or [d for z in cfg.get("zones", []) for d in z["destinations"]]
     trips = []
     for offset in range(1, wk["nb_semaines"] * 7):
         d = today + timedelta(days=offset)
@@ -53,17 +55,19 @@ def week_end_trips(cfg, today):
             r = d + timedelta(days=k)
             if r.weekday() in retours:
                 for o in cfg["aeroports_week_end"]:
-                    for dest in wk["destinations"]:
+                    for dest in dests:
                         trips.append(("week_end", o, dest, d, r))
     return trips
 
 
 def long_trips(cfg, today):
-    lg = cfg["long_sejour"]
+    lg = cfg.get("long_sejour", {})
     if not lg.get("actif"):
         return []
     first = today + timedelta(days=2)
     last = today + timedelta(days=330)  # Google n'affiche pas plus loin
+    # destinations : liste explicite, sinon toutes celles des zones
+    dests = lg.get("destinations") or [d for z in cfg.get("zones", []) for d in z["destinations"]]
     trips = []
     for p in lg["periodes"]:
         debut = date.fromisoformat(str(p["debut"]))
@@ -76,7 +80,7 @@ def long_trips(cfg, today):
                     r = d + timedelta(days=n)
                     if r <= fin:
                         for o in cfg["aeroports_long_courrier"]:
-                            for dest in lg["destinations"]:
+                            for dest in dests:
                                 trips.append(("long", o, dest, d, r))
             d += timedelta(days=pas)
     return trips
@@ -89,8 +93,7 @@ def combo_key(t):
 
 def pick(trips, n, vus):
     """Prend les n combinaisons cherchées le moins récemment (jamais cherchées d'abord).
-    Résultat : tout est couvert avant de refaire deux fois la même recherche,
-    même avec plusieurs lancements par jour."""
+    Tout est donc couvert avant de refaire deux fois la même recherche."""
     if n <= 0 or not trips:
         return []
     rnd = random.Random()
@@ -109,31 +112,84 @@ def parse_price(text):
     return int(digits) if digits else None
 
 
-def search_price(origin, dest, d, r, directs=False):
-    """Retourne (prix_aller_retour_min, avis_google, devise) ou None."""
-    from fast_flights import FlightData, Passengers, get_flights
+def detect_devise(raw):
+    raw = str(raw)
+    if "€" in raw or "EUR" in raw:
+        return "EUR"
+    if "£" in raw or "GBP" in raw:
+        return "GBP"
+    if "$" in raw or "USD" in raw:
+        return "USD"
+    return "EUR"
 
-    result = get_flights(
-        flight_data=[
-            FlightData(date=d.isoformat(), from_airport=origin, to_airport=dest),
-            FlightData(date=r.isoformat(), from_airport=dest, to_airport=origin),
-        ],
-        trip="round-trip",
-        seat="economy",
-        passengers=Passengers(adults=1, children=0, infants_in_seat=0, infants_on_lap=0),
-        fetch_mode="fallback",
-    )
+
+_TAUX = {}
+
+
+def taux_vers_eur(code):
+    """Taux de change du jour (gratuit, sans clé). Valeur de secours si indisponible."""
+    if code == "EUR":
+        return 1.0
+    if code in _TAUX:
+        return _TAUX[code]
+    rate = None
+    for url in (f"https://api.frankfurter.dev/v1/latest?base={code}&symbols=EUR",
+                f"https://api.frankfurter.app/latest?from={code}&to=EUR"):
+        try:
+            rate = float(json.loads(urllib.request.urlopen(url, timeout=15).read())["rates"]["EUR"])
+            break
+        except Exception:
+            continue
+    if rate is None:
+        rate = {"USD": 0.92, "GBP": 1.15}.get(code, 1.0)
+        print(f"Taux de change indisponible : valeur approximative utilisée pour {code} ({rate})")
+    else:
+        print(f"Conversion {code} → EUR au taux de {rate:.4f}")
+    _TAUX[code] = rate
+    return rate
+
+
+def search_price(origin, dest, d, r, directs=False):
+    """Retourne (prix_aller_retour_min_en_euros, avis_google, infos_du_vol) ou None."""
+    from fast_flights import FlightData, Passengers
+
+    flight_data = [
+        FlightData(date=d.isoformat(), from_airport=origin, to_airport=dest),
+        FlightData(date=r.isoformat(), from_airport=dest, to_airport=origin),
+    ]
+    pax = Passengers(adults=1, children=0, infants_in_seat=0, infants_on_lap=0)
+    try:
+        # on demande directement les prix en euros à Google
+        from fast_flights import create_filter, get_flights_from_filter
+        flt = create_filter(flight_data=flight_data, trip="round-trip", seat="economy", passengers=pax)
+        result = get_flights_from_filter(flt, currency="EUR", mode="fallback")
+    except (ImportError, TypeError):
+        from fast_flights import get_flights
+        result = get_flights(flight_data=flight_data, trip="round-trip", seat="economy",
+                             passengers=pax, fetch_mode="fallback")
+
     flights = list(result.flights)
     if directs:
-        flights = [f for f in flights if str(getattr(f, "stops", 0)) in ("0", "None")]
-    raws = [f.price for f in flights]
-    prices = [parse_price(x) for x in raws]
-    prices = [p for p in prices if p]
-    if not prices:
+        flights = [f for f in flights
+                   if str(getattr(f, "stops", 0)).strip().lower() in ("0", "none", "nonstop")]
+    cands = []
+    for f in flights:
+        p = parse_price(f.price)
+        if p:
+            # tout est converti en euros, quelle que soit la devise renvoyée par Google
+            cands.append((round(p * taux_vers_eur(detect_devise(f.price))), f))
+    if not cands:
         return None
-    first = str(raws[0])
-    devise = "$" if "$" in first else "£" if "£" in first else "€"
-    return min(prices), getattr(result, "current_price", None), devise
+    prix, best = min(cands, key=lambda c: c[0])
+    info = {"compagnie": str(getattr(best, "name", "") or ""),
+            "depart": str(getattr(best, "departure", "") or "")}
+    return prix, getattr(result, "current_price", None), info
+
+
+def est_vide(exc):
+    """Certaines erreurs veulent simplement dire 'aucun vol sur cette route'."""
+    m = str(exc).lower()
+    return any(s in m for s in ("no flights", "no result", "aucun vol"))
 
 
 # ---------------------------------------------------------------
@@ -159,7 +215,8 @@ def plafond(cfg, kind, dest):
     for z in cfg.get("zones", []):
         if dest in z["destinations"]:
             return z["plafond"], z["nom"]
-    return cfg["week_end" if kind == "week_end" else "long_sejour"].get("prix_max_alerte", 0), "plafond par défaut"
+    section = cfg.get("week_end" if kind == "week_end" else "long_sejour", {})
+    return section.get("prix_max_alerte", 0), "plafond par défaut"
 
 
 def evaluate(cfg, kind, dest, price, google_opinion, history_prices):
@@ -167,7 +224,7 @@ def evaluate(cfg, kind, dest, price, google_opinion, history_prices):
     det = cfg["detection"]
     seuil_abs, zone = plafond(cfg, kind, dest)
     median = None
-    if len(history_prices) >= det["echantillon_minimum"]:
+    if det.get("baisse_vs_historique", True) and len(history_prices) >= det["echantillon_minimum"]:
         median = statistics.median(history_prices)
         if price <= median * (1 - det["reduction_minimum"] / 100):
             pct = round((1 - price / median) * 100)
@@ -180,17 +237,58 @@ def evaluate(cfg, kind, dest, price, google_opinion, history_prices):
 
 
 # ---------------------------------------------------------------
-#  4. Notifications (ntfy gratuit, mail en secours)
+#  4. Liens et notifications (ntfy gratuit, mail en option)
 # ---------------------------------------------------------------
-def flights_link(origin, dest, d, r):
+def _varint(n):
+    out = bytearray()
+    while True:
+        b = n & 0x7F
+        n >>= 7
+        if n:
+            out.append(b | 0x80)
+        else:
+            out.append(b)
+            return bytes(out)
+
+
+def _champ(num, payload):
+    return _varint((num << 3) | 2) + _varint(len(payload)) + payload
+
+
+def _aeroport(code):
+    return bytes([0x08, 0x01]) + _champ(2, code.encode())
+
+
+def _vol(jour, depart, arrivee, directs=False):
+    escales = bytes([0x28, 0x00]) if directs else b""   # 0 escale
+    return (_champ(2, jour.encode()) + escales
+            + _champ(13, _aeroport(depart)) + _champ(14, _aeroport(arrivee)))
+
+
+def lien_vol(origin, dest, d, r, directs=False):
+    """Lien Google Flights qui ouvre directement la liste des vols aller-retour
+    pour ces aéroports et ces dates, en euros (vols directs seulement si demandé)."""
+    b = bytes([0x08, 0x1C, 0x10, 0x02])
+    b += _champ(3, _vol(d.isoformat(), origin, dest, directs))
+    b += _champ(3, _vol(r.isoformat(), dest, origin, directs))
+    b += bytes([0x40, 0x01, 0x48, 0x01, 0x70, 0x01])
+    b += _champ(16, bytes([0x08]) + b"\xff" * 9 + b"\x01") + bytes([0x98, 0x01, 0x01])
+    tfs = base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+    return f"https://www.google.com/travel/flights/search?tfs={tfs}&hl=fr&curr=EUR"
+
+
+def lien_recherche(origin, dest, d, r):
+    """Lien de secours (recherche en langage naturel)."""
     q = f"Flights from {origin} to {dest} on {d} through {r}"
     return "https://www.google.com/travel/flights?hl=fr&curr=EUR&q=" + urllib.parse.quote(q)
 
 
-def notify_ntfy(topic, title, message, click=None):
+def notify_ntfy(topic, title, message, click=None, secours=None):
     payload = {"topic": topic, "title": title, "message": message, "tags": ["airplane"]}
     if click:
         payload["click"] = click
+    if secours:
+        payload["actions"] = [{"action": "view", "label": "Lien de secours", "url": secours}]
     req = urllib.request.Request(
         "https://ntfy.sh",
         data=json.dumps(payload).encode("utf-8"),
@@ -219,16 +317,19 @@ def send_alerts(deals, cfg):
     deals = sorted(deals, key=lambda x: x["score"], reverse=True)[: cfg["limites"]["max_notifications"]]
     lines = []
     for dl in deals:
-        title = f"{nom(dl['origin'])} ⇄ {nom(dl['dest'])} : {dl['price']} {dl['devise']} A/R"
+        title = f"{nom(dl['origin'])} ⇄ {nom(dl['dest'])} : {dl['price']} € A/R"
         nuits = (dl["r"] - dl["d"]).days
         type_ = "week-end" if dl["kind"] == "week_end" else "long séjour"
-        msg = (f"💶 {dl['price']} {dl['devise']} l'aller-retour\n"
+        msg = (f"💶 {dl['price']} € l'aller-retour\n"
                f"{jour_fr(dl['d'])} → {jour_fr(dl['r'])} · {nuits} nuits ({type_})\n"
                f"{dl['why']}")
-        lines.append(f"{title}\n{msg}\n{dl['link']}\n")
+        vol = " · ".join(x for x in (dl["info"].get("compagnie"), dl["info"].get("depart")) if x)
+        if vol:
+            msg += f"\n✈️ {vol}"
+        lines.append(f"{title}\n{msg}\n{dl['link']}\n(secours : {dl['link2']})\n")
         if topic:
             try:
-                notify_ntfy(topic, title, msg, dl["link"])
+                notify_ntfy(topic, title, msg, dl["link"], dl["link2"])
             except Exception as e:  # une notif ratée ne doit pas tout casser
                 print("ntfy erreur:", e)
     if deals:
@@ -238,13 +339,26 @@ def send_alerts(deals, cfg):
 # ---------------------------------------------------------------
 #  5. Programme principal
 # ---------------------------------------------------------------
-def main():
-    cfg = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+def pause(lim):
+    p = lim["pause_secondes"]
+    time.sleep(random.uniform(p[0], p[1]) if isinstance(p, (list, tuple)) else p)
+
+
+def main(config_path, data_dir):
+    config_path, data_dir = Path(config_path), Path(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    history_file = data_dir / "history.json"    # prix relevés par route
+    notified_file = data_dir / "notified.json"  # offres déjà signalées
+    vus_file = data_dir / "vus.json"            # dernière recherche de chaque combinaison
+
+    cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if "zones" not in cfg:
+        cfg["zones"] = yaml.safe_load((ROOT / "zones.yaml").read_text(encoding="utf-8"))["zones"]
     today = date.today()
     now = datetime.now().strftime("%Y-%m-%dT%H:%M")
-    history = load_json(HISTORY_FILE, {})
-    notified = load_json(NOTIFIED_FILE, {})
-    vus = load_json(VUS_FILE, {})
+    history = load_json(history_file, {})
+    notified = load_json(notified_file, {})
+    vus = load_json(vus_file, {})
     lim = cfg["limites"]
     vides = history.setdefault("_vides", {})
 
@@ -260,9 +374,11 @@ def main():
 
     wk = [t for t in week_end_trips(cfg, today) if route_ok(t)]
     lg = [t for t in long_trips(cfg, today) if route_ok(t)]
-    n_wk = lim["recherches_max"] if not lg else int(lim["recherches_max"] * lim["part_week_end"])
-    n_lg = lim["recherches_max"] - n_wk if lg else 0
-    trips = pick(wk, n_wk, vus) + pick(lg, n_lg, vus)
+    if wk and lg:
+        n_wk = int(lim["recherches_max"] * lim.get("part_week_end", 0.7))
+    else:
+        n_wk = lim["recherches_max"] if wk else 0
+    trips = pick(wk, n_wk, vus) + pick(lg, lim["recherches_max"] - n_wk, vus)
     random.shuffle(trips)
     print(f"{len(trips)} recherches prévues ({len(wk)} week-end et {len(lg)} longs séjours possibles)")
 
@@ -273,7 +389,8 @@ def main():
 
     t0 = time.time()
     deals, ok, fails = [], 0, 0
-    empties, succeeded = [], set()
+    empties, succeeded, recent_empty = [], set(), []
+    consec_echecs, bloque = 0, False
     for t in trips:
         kind, o, dest, d, r = t
         if time.time() - t0 > lim["duree_max_minutes"] * 60:
@@ -281,45 +398,69 @@ def main():
             break
         if o == dest:
             continue
-        directs = bool(cfg["week_end" if kind == "week_end" else "long_sejour"].get("directs_seulement"))
+        section = cfg["week_end" if kind == "week_end" else "long_sejour"]
+        directs = bool(section.get("directs_seulement"))
+        res, erreur = None, None
         try:
             res = search_price(o, dest, d, r, directs)
         except Exception as e:
+            if not est_vide(e):   # "aucun vol" n'est pas une vraie erreur
+                erreur = e
+        if erreur is not None:
             fails += 1
-            print(f"échec {o}-{dest} {d}: {str(e)[:80]}")
+            consec_echecs += 1
+            if fails <= 8:        # on n'affiche que les premières erreurs
+                print(f"échec {o}-{dest} {d}: {str(erreur)[:100]}")
             if fails >= 15 and ok == 0:
                 print("Trop d'échecs sans aucun succès : arrêt (Google a peut-être changé).")
                 break
-            time.sleep(lim["pause_secondes"])
+            maxi = lim.get("echecs_consecutifs_max", 10)
+            if consec_echecs >= maxi:
+                print(f"{maxi} échecs d'affilée : blocage probable, arrêt pour ne pas insister.")
+                break
+            if consec_echecs == max(3, maxi // 2):
+                print(f"{consec_echecs} échecs d'affilée : pause de 2 minutes.")
+                time.sleep(120)
+            pause(lim)
             continue
-        time.sleep(lim["pause_secondes"])
+        consec_echecs = 0
+        pause(lim)
         key = route_key(kind, o, dest)
         vus[combo_key(t)] = now
         if not res:
             empties.append(key)
+            recent_empty.append(combo_key(t))
+            if len(recent_empty) >= 25:
+                print("25 recherches vides d'affilée : Google ne renvoie plus rien, arrêt.")
+                for ck in recent_empty:   # ces recherches ne comptent pas comme faites
+                    vus.pop(ck, None)
+                bloque = True
+                break
             continue
+        recent_empty = []
         ok += 1
         succeeded.add(key)
         vides.pop(key, None)
-        price, opinion, devise = res
-        if devise != "€":
-            print(f"Attention : prix en {devise} reçu pour {o}-{dest}")
+        price, opinion, info = res
         past = [h["p"] for h in history.get(key, [])]
         good, why, median = evaluate(cfg, kind, dest, price, opinion, past)
-        history.setdefault(key, []).append({"p": price, "c": today.isoformat()})
-        history[key] = history[key][-300:]
+        if cfg["detection"].get("baisse_vs_historique", True):   # inutile de garder les prix sinon
+            history.setdefault(key, []).append({"p": price, "c": today.isoformat()})
+            history[key] = history[key][-300:]
         if good:
             nkey = f"{key}|{d}|{r}"
             if nkey not in notified or price < notified[nkey]:
                 notified[nkey] = price
-                score = (1 - price / median) if median else 0.2
+                seuil = plafond(cfg, kind, dest)[0]
+                score = (1 - price / median) if median else ((1 - price / seuil) if seuil else 0.2)
                 deals.append({"kind": kind, "origin": o, "dest": dest, "d": d, "r": r,
-                              "price": price, "devise": devise, "why": why, "score": score,
-                              "link": flights_link(o, dest, d, r)})
+                              "price": price, "why": why, "score": score, "info": info,
+                              "link": lien_vol(o, dest, d, r, directs),
+                              "link2": lien_recherche(o, dest, d, r)})
 
     # Routes sans aucun vol : on ne les met de côté que si ce n'est pas un blocage de Google
     total = ok + len(empties)
-    if total >= 30 and len(empties) / total > 0.6:
+    if bloque or (total >= 30 and len(empties) / total > 0.6):
         print("Beaucoup de recherches vides : Google bloque peut-être. Aucune route mise de côté.")
     else:
         for key in empties:
@@ -333,20 +474,18 @@ def main():
     cadence = f"{mins * 60 / max(1, total):.1f} s par recherche" if total else ""
     print(f"{ok} prix relevés, {len(empties)} sans résultat, {fails} échecs, "
           f"{len(deals)} offre(s) en {mins:.1f} min. {cadence}")
-    paused = sum(1 for v in vides.values() if v["n"] >= lim["routes_vides_avant_pause"])
-    print(f"Routes actuellement mises de côté : {paused}")
+    mises_de_cote = sorted(
+        f"{nom(k.split('|')[1])}→{nom(k.split('|')[2])}"
+        for k, v in vides.items() if v["n"] >= lim["routes_vides_avant_pause"])
+    print(f"Routes mises de côté ({len(mises_de_cote)}) : " + ", ".join(mises_de_cote))
 
     if deals:
         send_alerts(deals, cfg)
     elif os.environ.get("NTFY_TOPIC") and os.environ.get("NTFY_TEST") == "1":
         notify_ntfy(os.environ["NTFY_TOPIC"], "Test", f"Le détecteur fonctionne ({ok} prix relevés).")
 
-    save_json(HISTORY_FILE, history)
-    save_json(NOTIFIED_FILE, notified)
-    save_json(VUS_FILE, vus)
+    save_json(history_file, history)
+    save_json(notified_file, notified)
+    save_json(vus_file, vus)
     if ok == 0 and trips:
         sys.exit(1)  # fait apparaître l'échec dans GitHub
-
-
-if __name__ == "__main__":
-    main()
