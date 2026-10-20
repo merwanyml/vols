@@ -10,8 +10,25 @@ week_end:
   actif: true
   nb_semaines: 12              # combien de semaines à l'avance on regarde
   departs: [jeudi, vendredi]   # jours de départ possibles
-  retours: [dimanche, lundi]   # jours de retour possibles
+  retours: [dimanche]          # retour toujours le dimanche
+  # Ton emploi du temps de janvier est inconnu : à partir de cette date, un retour le lundi
+  # est aussi accepté. Pour ne jamais revenir un lundi, supprime ces 3 lignes.
+  retours_supplementaires:
+    a_partir_du: "2027-01-01"
+    jours: [lundi]
   directs_seulement: true      # seulement les vols directs (sans escale)
+  # Horaires voulus. Pour les désactiver, supprime tout le bloc "horaires".
+  # L'aller est filtré directement. Le retour est vérifié seulement quand une offre
+  # est trouvée (l'heure du retour n'apparaît pas dans la recherche aller-retour).
+  horaires:
+    depart:
+      jeudi:    {apres: "19:00"}   # jeudi soir tard
+      vendredi: {avant: "12:00"}   # vendredi matin
+    retour:
+      dimanche: {apres: "17:00"}   # dimanche soir
+  # false : une offre sans retour dimanche soir est quand même signalée, avec un avertissement
+  # true : elle n'est pas signalée du tout
+  retour_strict: false
   # Les destinations sont celles de la section "zones" ci-dessous.
   # Pour en ajouter une : mets son code dans la zone qui correspond
   # (et son nom français dans noms.py).
