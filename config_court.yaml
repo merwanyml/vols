@@ -1,0 +1,65 @@
+# ============================================================
+#  COURT COURRIER : week-ends depuis Lille, Charleroi et Beauvais
+#  (le long courrier depuis Paris aura son propre fichier, plus tard)
+# ============================================================
+
+# Lille : LIL | Bruxelles-Charleroi : CRL | Paris-Beauvais : BVA
+aeroports_week_end: [LIL, CRL, BVA]
+
+week_end:
+  actif: true
+  nb_semaines: 12              # combien de semaines à l'avance on regarde
+  departs: [jeudi, vendredi]   # jours de départ possibles
+  retours: [dimanche, lundi]   # jours de retour possibles
+  directs_seulement: true      # seulement les vols directs (sans escale)
+  # Les destinations sont celles de la section "zones" ci-dessous.
+  # Pour en ajouter une : mets son code dans la zone qui correspond
+  # (et son nom français dans noms.py).
+  prix_max_alerte: 60          # utilisé seulement pour une destination absente des zones
+
+# --- Destinations et plafonds d'alerte, selon la DISTANCE ---
+# Si l'aller-retour passe sous le plafond de sa zone, tu es prévenu tout de suite,
+# même sans historique. Ce sont des estimations à ajuster selon ce que tu vois passer.
+zones:
+  - nom: Europe proche
+    plafond: 60
+    destinations: [
+      BCN, GRO, MAD, VLC, ALC, AGP, SVQ, GRX, BIO, SCQ, PMI, IBZ, LIS, OPO,
+      FCO, CIA, MXP, BGY, VCE, TSF, VRN, BLQ, PSA, NAP, TRN,
+      BER, VIE, PRG, BUD, WAW, KRK, GDN, WRO, POZ, KTW, BTS, LJU, ZAG, CPH,
+      STN, LTN, LGW, MAN, EDI, DUB, ORK, BRS, NCE,
+    ]
+  - nom: Europe éloignée
+    plafond: 90
+    destinations: [
+      FAO, BRI, BDS, CTA, PMO, CAG, SPU, DBV,
+      OSL, ARN, HEL, TLL, RIX, VNO,
+      ATH, SKG, CFU, RHO, HER, CHQ, MLA, TIA, SOF, OTP, BEG, SJJ, SKP, IST, SAW,
+    ]
+  - nom: Îles lointaines
+    plafond: 120
+    destinations: [TFS, LPA, ACE, FUE, FNC, LCA, PFO, KEF]
+  - nom: Maghreb
+    plafond: 130
+    destinations: [RAK, AGA, FEZ, TNG, CMN, TUN, DJE, MIR]
+
+# --- Comment l'outil juge qu'un prix est une bonne affaire --
+# Court courrier : uniquement les plafonds de la section "zones" ci-dessus.
+detection:
+  baisse_vs_historique: false   # pas de comparaison avec le prix habituel
+  utiliser_avis_google: false
+
+# --- Limites techniques (PAR LANCEMENT, il y en a 2 par jour) --
+limites:
+  # L'outil s'arrête à la première de ces deux limites.
+  recherches_max: 1000
+  duree_max_minutes: 45
+  # Pause entre deux recherches, tirée au hasard entre ces deux valeurs (en secondes)
+  pause_secondes: [0.8, 1.8]
+  # Arrêt si autant d'échecs d'affilée (signe que Google nous freine)
+  echecs_consecutifs_max: 25
+  # Une route sans aucun vol 3 fois de suite est mise de côté 30 jours
+  routes_vides_avant_pause: 3
+  routes_vides_jours_pause: 30
+  part_week_end: 1.0
+  max_notifications: 8

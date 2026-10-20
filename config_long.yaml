@@ -1,0 +1,80 @@
+# ============================================================
+#  LONG COURRIER : longs séjours dans le monde depuis Paris
+#  (le court courrier / week-ends a son propre fichier : config_court.yaml)
+# ============================================================
+
+# Paris-Roissy (CDG) et Paris-Orly (ORY)
+aeroports_long_courrier: [CDG, ORY]
+
+# Le départ ET le retour doivent tenir dans la période.
+# Pense à mettre à jour les dates chaque année.
+long_sejour:
+  actif: true
+  directs_seulement: false     # escales acceptées (indispensable pour le long courrier)
+  periodes:
+    - nom: Avril
+      debut: "2027-04-10"
+      fin: "2027-04-25"
+      durees: [5, 7, 10]
+      pas_jours: 1             # un départ chaque jour
+    - nom: Été
+      debut: "2027-07-01"
+      fin: "2027-08-31"
+      durees: [7, 14, 21]
+      pas_jours: 3             # un départ tous les 3 jours
+    # Noël : retiré. Pour le remettre, enlève les "#" devant les 5 lignes suivantes.
+    # - nom: Noël
+    #   debut: "2026-12-23"
+    #   fin: "2027-01-03"
+    #   durees: [5, 7, 9]
+    #   pas_jours: 1
+  prix_max_alerte: 400         # utilisé seulement pour une destination absente des zones
+
+# --- Destinations et plafonds d'alerte, selon la DISTANCE (pas la durée) ---
+# Si l'aller-retour passe sous le plafond de sa zone, tu es prévenu tout de suite.
+# Pour ajouter une destination : mets son code dans la zone qui correspond
+# (et son nom français dans noms.py).
+zones:
+  - nom: Maghreb
+    plafond: 130
+    destinations: [CMN, RAK, TUN]
+  - nom: Égypte et Golfe
+    plafond: 300
+    destinations: [CAI, DXB, DOH]
+  - nom: Amérique du Nord (côte est)
+    plafond: 350
+    destinations: [JFK, YUL, MIA]
+  - nom: Très long courrier
+    plafond: 500
+    destinations: [
+      LAX, MEX, CUN, BKK, SGN, HAN, SIN, KUL, DPS, TYO, ICN, DEL, BOM, CPT, NBO,
+      ZNZ, MRU, RUN, PTP, FDF, PUJ, HAV, GRU, EZE, LIM, BOG,
+    ]
+  - nom: Polynésie
+    plafond: 1000
+    destinations: [PPT]
+
+# --- Comment l'outil juge qu'un prix est une bonne affaire --
+# Long courrier : plafonds des zones ET comparaison avec le prix habituel de la route.
+detection:
+  baisse_vs_historique: true
+  # Alerte si le prix est au moins X % moins cher que le prix habituel de la route
+  reduction_minimum: 30
+  # Nombre minimum de prix relevés avant de comparer avec l'historique
+  echantillon_minimum: 6
+  # Utiliser aussi l'avis de Google ("prix bas") comme signal
+  utiliser_avis_google: true
+
+# --- Limites techniques (PAR LANCEMENT, il y en a 2 par jour) --
+limites:
+  # L'outil s'arrête à la première de ces deux limites.
+  recherches_max: 400
+  duree_max_minutes: 40
+  # Pause entre deux recherches, tirée au hasard entre ces deux valeurs (en secondes)
+  pause_secondes: [0.8, 1.8]
+  # Arrêt si autant d'échecs d'affilée (signe que Google nous freine)
+  echecs_consecutifs_max: 25
+  # Une route sans aucun vol 3 fois de suite est mise de côté 30 jours
+  routes_vides_avant_pause: 3
+  routes_vides_jours_pause: 30
+  max_notifications: 8
