@@ -21,6 +21,23 @@ NOMS = {
     "MRU": "Île Maurice", "RUN": "La Réunion", "PTP": "Guadeloupe", "FDF": "Martinique",
     "PUJ": "Punta Cana", "HAV": "La Havane", "GRU": "São Paulo", "EZE": "Buenos Aires",
     "LIM": "Lima", "BOG": "Bogotá", "PPT": "Tahiti",
+    # Ajouts court courrier
+    "GRO": "Gérone", "ALC": "Alicante", "GRX": "Grenade", "BIO": "Bilbao",
+    "SCQ": "Saint-Jacques-de-Compostelle", "IBZ": "Ibiza", "FAO": "Faro", "TFS": "Tenerife",
+    "LPA": "Grande Canarie", "ACE": "Lanzarote", "FUE": "Fuerteventura", "FNC": "Madère",
+    "CIA": "Rome (Ciampino)", "BGY": "Milan (Bergame)", "TSF": "Venise (Trévise)", "VRN": "Vérone",
+    "BLQ": "Bologne", "PSA": "Pise", "BRI": "Bari", "BDS": "Brindisi", "CTA": "Catane",
+    "PMO": "Palerme", "CAG": "Cagliari", "TRN": "Turin",
+    "GDN": "Gdansk", "WRO": "Wrocław", "POZ": "Poznań", "KTW": "Katowice", "BTS": "Bratislava",
+    "LJU": "Ljubljana", "SPU": "Split", "DBV": "Dubrovnik", "SOF": "Sofia", "OTP": "Bucarest",
+    "BEG": "Belgrade", "SJJ": "Sarajevo", "SKP": "Skopje", "TLL": "Tallinn", "RIX": "Riga",
+    "VNO": "Vilnius", "HEL": "Helsinki", "KEF": "Reykjavik",
+    "STN": "Londres (Stansted)", "LTN": "Londres (Luton)", "LGW": "Londres (Gatwick)",
+    "MAN": "Manchester", "ORK": "Cork", "BRS": "Bristol",
+    "SKG": "Thessalonique", "CFU": "Corfou", "RHO": "Rhodes", "HER": "Héraklion (Crète)",
+    "CHQ": "La Canée (Crète)", "LCA": "Larnaca (Chypre)", "PFO": "Paphos (Chypre)",
+    "IST": "Istanbul", "SAW": "Istanbul (Sabiha Gökçen)",
+    "AGA": "Agadir", "FEZ": "Fès", "TNG": "Tanger", "DJE": "Djerba", "MIR": "Monastir",
 }
 
 
