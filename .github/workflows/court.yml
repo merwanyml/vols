@@ -2,8 +2,9 @@ name: Court courrier (week-ends)
 
 on:
   schedule:
+    # 2 lancements par jour (heures UTC : environ 7h et 18h à Paris)
     - cron: "0 5,16 * * *"
-  workflow_dispatch:
+  workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
     inputs:
       test_notification:
         description: "Envoyer une notification de test"
@@ -13,6 +14,7 @@ on:
 permissions:
   contents: write
 
+# un seul lancement à la fois pour ce script (évite les conflits sur l'historique)
 concurrency:
   group: vols-court
   cancel-in-progress: false
@@ -20,7 +22,7 @@ concurrency:
 jobs:
   chercher:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 170
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
