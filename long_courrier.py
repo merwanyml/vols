@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Longs séjours dans le monde depuis Paris (Roissy-CDG et Orly).
+"""Longs séjours dans le monde depuis Paris (CDG, Orly), Bruxelles-Zaventem et Amsterdam.
 Réglages : config_long.yaml | Historique : dossier data/long/"""
 from pathlib import Path
 
