@@ -4,7 +4,7 @@ Si tu ajoutes un code dans config.yaml, ajoute-le aussi ici (sinon le code s'aff
 NOMS = {
     # Départs
     "LIL": "Lille", "CDG": "Paris (Roissy-CDG)", "ORY": "Paris (Orly)", "BVA": "Paris (Beauvais)",
-    "BRU": "Bruxelles", "CRL": "Bruxelles (Charleroi)", "AMS": "Amsterdam",
+    "BRU": "Bruxelles (Zaventem)", "CRL": "Bruxelles (Charleroi)", "AMS": "Amsterdam",
     # Europe
     "BCN": "Barcelone", "MAD": "Madrid", "LIS": "Lisbonne", "OPO": "Porto", "FCO": "Rome",
     "MXP": "Milan", "VCE": "Venise", "NAP": "Naples", "ATH": "Athènes", "PRG": "Prague",
