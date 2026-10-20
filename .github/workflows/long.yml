@@ -2,8 +2,9 @@ name: Long courrier (avril, été)
 
 on:
   schedule:
-    # 2 lancements par jour (heures UTC : environ 8h30 et 20h30 à Paris)
-    - cron: "30 6,18 * * *"
+    # 2 lancements par jour (heures UTC : environ 11h et 23h à Paris),
+    # décalés par rapport au court courrier pour ne pas tourner en même temps
+    - cron: "0 9,21 * * *"
   workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
     inputs:
       test_notification:
@@ -22,7 +23,7 @@ concurrency:
 jobs:
   chercher:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 140
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
