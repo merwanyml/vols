@@ -1,0 +1,43 @@
+name: Court courrier (week-ends)
+
+on:
+  schedule:
+    - cron: "0 5,16 * * *"
+  workflow_dispatch:
+    inputs:
+      test_notification:
+        description: "Envoyer une notification de test"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vols-court
+  cancel-in-progress: false
+
+jobs:
+  chercher:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Lancer la recherche
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NTFY_TEST: ${{ inputs.test_notification && '1' || '0' }}
+        run: python court_courrier.py
+      - name: Sauvegarder l'historique des prix
+        if: always()
+        run: |
+          git config user.name "vols-bot"
+          git config user.email "vols-bot@users.noreply.github.com"
+          git add data/court || true
+          git diff --cached --quiet || (git commit -m "Historique court courrier" && git pull --rebase && git push)
