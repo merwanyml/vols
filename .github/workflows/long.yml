@@ -2,9 +2,9 @@ name: Long courrier (avril, été)
 
 on:
   schedule:
-    # 2 lancements par jour (heures UTC : environ 11h et 23h à Paris),
+    # 3 lancements par jour (heures UTC : environ 9h, 16h et minuit à Paris),
     # décalés par rapport au court courrier pour ne pas tourner en même temps
-    - cron: "0 9,21 * * *"
+    - cron: "0 7,14,22 * * *"
   workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
     inputs:
       test_notification:
