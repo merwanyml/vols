@@ -1,6 +1,7 @@
 # ============================================================
-#  COURT COURRIER : week-ends depuis Lille, Charleroi et Beauvais
-#  (le long courrier depuis Paris aura son propre fichier, plus tard)
+#  COURT COURRIER : week-ends et courts séjours de vacances
+#  depuis Lille, Charleroi et Beauvais
+#  (le long courrier a son propre fichier : config_long.yaml)
 # ============================================================
 
 # Lille : LIL | Bruxelles-Charleroi : CRL | Paris-Beauvais : BVA
@@ -34,6 +35,27 @@ week_end:
   # (et son nom français dans noms.py).
   prix_max_alerte: 60          # utilisé seulement pour une destination absente des zones
 
+# Courts séjours pendant tes vacances de fin d'année : quelques nuits, n'importe quels jours
+# de la période, vols directs, sans contrainte d'horaire. Mêmes destinations et mêmes plafonds
+# que les week-ends. Pour les désactiver : actif: false.
+vacances_court:
+  actif: true
+  debut: "2026-12-24"
+  fin: "2027-01-04"
+  durees: [2, 3]               # nombre de nuits (3 jours = 2 ou 3 nuits)
+  pas_jours: 1                 # un départ chaque jour
+  directs_seulement: true
+  prix_max_alerte: 60          # utilisé seulement pour une destination absente des zones
+
+# Destinations dont l'intérêt est surtout la plage ou la chaleur : mises en pause pour l'hiver.
+# Elles reprennent TOUTES SEULES à la date indiquée. Pour les remettre plus tôt, change la date.
+destinations_en_pause:
+  jusqu_au: "2027-02-15"
+  codes: [
+    RAK, AGA, FEZ, TNG, CMN, TUN, DJE, MIR, OZZ, ESU,   # tout le Maghreb
+    IBZ, PMI, CFU, RHO, HER, CHQ, SPU, CAG, BDS, BRI,   # plages d'été
+  ]
+
 # --- Destinations et plafonds d'alerte, selon la DISTANCE ---
 # Si l'aller-retour passe sous le plafond de sa zone, tu es prévenu tout de suite,
 # même sans historique. Ce sont des estimations à ajuster selon ce que tu vois passer.
@@ -45,6 +67,10 @@ zones:
       FCO, CIA, MXP, BGY, VCE, TSF, VRN, BLQ, PSA, NAP, TRN,
       BER, VIE, PRG, BUD, WAW, KRK, GDN, WRO, POZ, KTW, BTS, LJU, ZAG, CPH,
       STN, LTN, LGW, MAN, EDI, DUB, ORK, BRS, NCE,
+      # ajouts pour l'hiver (villes du nord et de l'est, marchés de Noël, Royaume-Uni)
+      DUS, CGN, HAM, MUC, FRA, NUE, BSL, SZG, INN,
+      BHX, LPL, NCL, GLA, BFS, LBA, EMA, CWL, SNN, BLL,
+      TRS, FLR, GOA, REU, ZAZ, VGO, JRZ, LEI, SZZ, RZE, BRQ, KSC,
     ]
   - nom: Europe éloignée
     plafond: 90
@@ -52,13 +78,20 @@ zones:
       FAO, BRI, BDS, CTA, PMO, CAG, SPU, DBV,
       OSL, ARN, HEL, TLL, RIX, VNO,
       ATH, SKG, CFU, RHO, HER, CHQ, MLA, TIA, SOF, OTP, BEG, SJJ, SKP, IST, SAW,
+      # ajouts pour l'hiver
+      CLJ, TSR, IAS, SBZ, PRN, TGD, TIV, KIV, KUN,
+      NYO, TRF, BGO, GOT, MMX, TOS, RVN,
     ]
   - nom: Îles lointaines
     plafond: 120
-    destinations: [TFS, LPA, ACE, FUE, FNC, LCA, PFO, KEF]
+    destinations: [TFS, LPA, ACE, FUE, FNC, LCA, PFO, KEF, PDL, SPC, TFN]
   - nom: Maghreb
-    plafond: 130
-    destinations: [RAK, AGA, FEZ, TNG, CMN, TUN, DJE, MIR]
+    plafond: 70
+    destinations: [RAK, AGA, FEZ, TNG, CMN, TUN, DJE, MIR, OZZ, ESU]
+  # Soleil en plein hiver (20 à 25 °C en décembre) : Égypte (mer Rouge), Cap-Vert, Jordanie
+  - nom: Soleil d'hiver
+    plafond: 150
+    destinations: [HRG, SSH, RMF, SID, BVC, AQJ]
 
 # --- Comment l'outil juge qu'un prix est une bonne affaire --
 # Court courrier : uniquement les plafonds de la section "zones" ci-dessus.
@@ -74,7 +107,7 @@ detection:
     marge_euros: 5              # alerte si le prix est à moins de 5 € du minimum enregistré
     garde_fou_x_plafond: 1.5    # pas d'alerte record si le prix dépasse 1,5 × le plafond de la zone
 
-# --- Limites techniques (PAR LANCEMENT, il y en a 2 par jour) --
+# --- Limites techniques (PAR LANCEMENT, il y en a 3 par jour) --
 limites:
   # L'outil s'arrête à la première de ces deux limites.
   recherches_max: 1500
@@ -88,4 +121,6 @@ limites:
   routes_vides_avant_pause: 3
   routes_vides_jours_pause: 30
   part_week_end: 1.0
+  # Part des recherches consacrée aux séjours de vacances (24/12 → 04/01) tant qu'ils existent.
+  part_vacances: 0.25
   max_notifications: 8
