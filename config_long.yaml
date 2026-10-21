@@ -12,6 +12,7 @@ poids_aeroports: {CDG: 1, ORY: 1, BRU: 1, AMS: 0.4}
 
 # Le départ ET le retour doivent tenir dans la période.
 # Pense à mettre à jour les dates chaque année.
+# "reperes" : dates testées en permanence pour surveiller chaque route (voir "reperage" plus bas).
 long_sejour:
   actif: true
   directs_seulement: false     # escales acceptées (indispensable pour le long courrier)
@@ -21,63 +22,96 @@ long_sejour:
       fin: "2027-04-25"
       durees: [5, 7, 10]
       pas_jours: 1             # un départ chaque jour
+      reperes: {durees: [7], pas_jours: 4}
     - nom: Été
       debut: "2027-07-01"
       fin: "2027-08-31"
       durees: [7, 14, 21]
       pas_jours: 3             # un départ tous les 3 jours
-    # Noël : retiré. Pour le remettre, enlève les "#" devant les 5 lignes suivantes.
-    # - nom: Noël
-    #   debut: "2026-12-23"
-    #   fin: "2027-01-03"
-    #   durees: [5, 7, 9]
-    #   pas_jours: 1
+      reperes: {durees: [14], pas_jours: 8}
+    - nom: Noël
+      debut: "2026-12-24"
+      fin: "2027-01-04"
+      durees: [5, 7, 9]
+      pas_jours: 1
+      reperes: {durees: [7], pas_jours: 2}
   prix_max_alerte: 400         # utilisé seulement pour une destination absente des zones
+
+# --- Repérage puis zoom -------------------------------------------------------
+# Avec ~120 destinations, tester toutes les dates de toutes les routes prendrait des semaines.
+# L'outil fait donc deux choses :
+#   1. repérage : il surveille chaque route avec quelques dates seulement (les "reperes" ci-dessus)
+#   2. zoom : si un repère tombe sous (zoom_si_sous_x_plafond × plafond de la zone), il teste
+#      ensuite TOUTES les dates de cette route/période pendant "zoom_jours" jours, pour dénicher
+#      la meilleure date.
+# Pour revenir à "toutes les dates partout" : actif: false.
+reperage:
+  actif: true
+  zoom_si_sous_x_plafond: 1.4  # 1.4 = un prix jusqu'à 40 % au-dessus du plafond déclenche le zoom
+  zoom_jours: 10
+  part_zoom: 0.4               # part maximale des recherches consacrée au zoom
+
+# Destinations mises en pause : elles reprennent TOUTES SEULES à la date indiquée.
+destinations_en_pause:
+  jusqu_au: "2027-02-15"
+  codes: [CMN, RAK, TUN, AGA, TNG, FEZ, DJE, ALG, ORN]   # tout le Maghreb
 
 # --- Destinations et plafonds d'alerte, selon la DISTANCE (pas la durée) ---
 # Si l'aller-retour passe sous le plafond de sa zone, tu es prévenu tout de suite.
 # Pour ajouter une destination : mets son code dans la zone qui correspond
-# (et son nom français dans noms.py).
+# (et son nom français dans noms.py, son prix d'hôtel dans couts.py).
 zones:
   - nom: Maghreb
-    plafond: 130
-    destinations: [CMN, RAK, TUN]
-  - nom: Égypte et Golfe
+    plafond: 70
+    destinations: [CMN, RAK, TUN, AGA, TNG, FEZ, DJE, ALG, ORN]
+  - nom: Égypte, Proche-Orient et Golfe
     plafond: 300
-    destinations: [CAI, DXB, DOH]
+    destinations: [CAI, DXB, DOH, HRG, SSH, AUH, MCT, AMM, TBS, EVN, GYD]
+  - nom: Afrique
+    plafond: 400
+    destinations: [DSS, ABJ, ACC, DLA, LOS, ADD, DAR, JRO, SID]
   - nom: Amérique du Nord (côte est)
     plafond: 350
-    destinations: [JFK, YUL, MIA]
+    destinations: [JFK, YUL, MIA, BOS, IAD, PHL, YYZ, YQB, YHZ]
+  - nom: Amérique du Nord (intérieur et ouest)
+    plafond: 450
+    destinations: [ORD, ATL, MCO, DFW, IAH, DEN, LAS, SFO, SEA, YVR]
   - nom: Très long courrier
     plafond: 500
     destinations: [
+      # déjà surveillées
       LAX, MEX, CUN, BKK, SGN, HAN, SIN, KUL, DPS, TYO, ICN, DEL, BOM, CPT, NBO,
       ZNZ, MRU, RUN, PTP, FDF, PUJ, HAV, GRU, EZE, LIM, BOG,
+      # Asie
+      MNL, CEB, HKG, TPE, PEK, PVG, OSA, CGK, HKT, CNX, REP, PNH, USM, DAD, PQC,
+      BLR, MAA, CMB, MLE, KTM, TAS, ALA,
+      # Afrique australe et océan Indien
+      JNB, TNR, SEZ,
+      # Caraïbes et Amérique centrale et du Sud
+      SJU, BGI, MBJ, NAS, SXM, SDQ, CTG, MDE, PTY, SJO, GUA, SCL, MVD, UIO, GIG, SSA, REC, FOR,
     ]
+  - nom: Océanie et Pacifique
+    plafond: 900
+    destinations: [SYD, MEL, BNE, PER, AKL, NOU, HNL]
   - nom: Polynésie
     plafond: 1000
     destinations: [PPT]
 
 # --- Comment l'outil juge qu'un prix est une bonne affaire --
-# Long courrier : plafonds des zones ET comparaison avec le prix habituel de la route.
+# Long courrier : uniquement (1) les plafonds des zones et (2) une VRAIE baisse sous le record
+# enregistré. L'ancien critère « X % moins cher que d'habitude » est supprimé : il signalait des
+# vols à 800 € « parce que d'habitude c'est 1500 € », ce qui n'est pas une bonne affaire.
 detection:
-  baisse_vs_historique: true
-  # Alerte si le prix est au moins X % moins cher que le prix habituel de la route
-  reduction_minimum: 30
-  # Nombre minimum de prix relevés avant de comparer avec l'historique
-  echantillon_minimum: 6
-  # Utiliser aussi l'avis de Google ("prix bas") comme signal
-  utiliser_avis_google: true
-  # Record : l'outil retient le meilleur prix jamais relevé sur chaque route
-  # (depuis le début du script) et te prévient quand un vol l'égale, le bat
-  # ou s'en approche de quelques euros.
+  baisse_vs_historique: false
+  utiliser_avis_google: false
+  # Record : le meilleur prix jamais relevé sur chaque route ET chaque période (avril, été, Noël).
   record_prix:
     actif: true
     echantillon_minimum: 15     # relevés nécessaires sur la route avant de parler de "record"
-    marge_euros: 10             # alerte si le prix est à moins de 10 € du minimum enregistré
+    baisse_minimum_pct: 8       # il faut battre l'ancien record d'au moins 8 % (une vraie baisse)
     garde_fou_x_plafond: 1.5    # pas d'alerte record si le prix dépasse 1,5 × le plafond de la zone
 
-# --- Limites techniques (PAR LANCEMENT, il y en a 2 par jour) --
+# --- Limites techniques (PAR LANCEMENT, il y en a 3 par jour) --
 limites:
   # L'outil s'arrête à la première de ces deux limites.
   recherches_max: 1000
