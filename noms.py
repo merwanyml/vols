@@ -1,5 +1,5 @@
 """Noms lisibles des aéroports pour les notifications.
-Si tu ajoutes un code dans config.yaml, ajoute-le aussi ici (sinon le code s'affiche)."""
+Si tu ajoutes un code dans un fichier config, ajoute-le aussi ici (sinon le code s'affiche)."""
 
 NOMS = {
     # Départs
@@ -38,6 +38,38 @@ NOMS = {
     "CHQ": "La Canée (Crète)", "LCA": "Larnaca (Chypre)", "PFO": "Paphos (Chypre)",
     "IST": "Istanbul", "SAW": "Istanbul (Sabiha Gökçen)",
     "AGA": "Agadir", "FEZ": "Fès", "TNG": "Tanger", "DJE": "Djerba", "MIR": "Monastir",
+    # Ajouts hiver / long courrier
+    "ABJ": "Abidjan", "ACC": "Accra", "ADD": "Addis-Abeba", "AKL": "Auckland", "ALA": "Almaty",
+    "ALG": "Alger", "AMM": "Amman", "AQJ": "Aqaba", "ATL": "Atlanta", "AUH": "Abou Dhabi",
+    "BFS": "Belfast", "BGI": "La Barbade", "BGO": "Bergen", "BHX": "Birmingham", "BLL": "Billund",
+    "BLR": "Bangalore", "BNE": "Brisbane", "BOS": "Boston", "BRQ": "Brno", "BSL": "Bâle-Mulhouse",
+    "BVC": "Boa Vista (Cap-Vert)", "CEB": "Cebu", "CGK": "Jakarta", "CGN": "Cologne",
+    "CLJ": "Cluj-Napoca", "CMB": "Colombo", "CNX": "Chiang Mai", "CTG": "Carthagène (Colombie)",
+    "CWL": "Cardiff", "DAD": "Da Nang", "DAR": "Dar es Salaam", "DEN": "Denver", "DFW": "Dallas",
+    "DLA": "Douala", "DSS": "Dakar", "DUS": "Düsseldorf", "EMA": "East Midlands (Nottingham)",
+    "ESU": "Essaouira", "EVN": "Erevan", "FLR": "Florence", "FOR": "Fortaleza", "FRA": "Francfort",
+    "GIG": "Rio de Janeiro", "GLA": "Glasgow", "GOA": "Gênes", "GOT": "Göteborg", "GUA": "Guatemala",
+    "GYD": "Bakou", "HAM": "Hambourg", "HKG": "Hong Kong", "HKT": "Phuket", "HNL": "Honolulu",
+    "HRG": "Hurghada", "IAD": "Washington", "IAH": "Houston", "IAS": "Iași", "INN": "Innsbruck",
+    "JNB": "Johannesburg", "JRO": "Kilimandjaro", "JRZ": "Jerez", "KIV": "Chișinău", "KSC": "Košice",
+    "KTM": "Katmandou", "KUN": "Kaunas", "LAS": "Las Vegas", "LBA": "Leeds", "LEI": "Almería",
+    "LOS": "Lagos", "LPL": "Liverpool", "MAA": "Chennai", "MBJ": "Montego Bay (Jamaïque)",
+    "MCO": "Orlando", "MCT": "Mascate", "MDE": "Medellín", "MEL": "Melbourne", "MLE": "Maldives",
+    "MMX": "Malmö", "MNL": "Manille", "MUC": "Munich", "MVD": "Montevideo", "NAS": "Nassau (Bahamas)",
+    "NCL": "Newcastle", "NOU": "Nouméa", "NUE": "Nuremberg", "NYO": "Stockholm (Skavsta)",
+    "ORD": "Chicago", "ORN": "Oran", "OSA": "Osaka", "OZZ": "Ouarzazate", "PDL": "Açores (Ponta Delgada)",
+    "PEK": "Pékin", "PER": "Perth", "PHL": "Philadelphie", "PNH": "Phnom Penh", "PQC": "Phu Quoc",
+    "PRN": "Pristina", "PTY": "Panama", "PVG": "Shanghai", "REC": "Recife", "REP": "Siem Reap (Angkor)",
+    "REU": "Reus (Tarragone)", "RMF": "Marsa Alam", "RVN": "Rovaniemi (Laponie)", "RZE": "Rzeszów",
+    "SBZ": "Sibiu", "SCL": "Santiago du Chili", "SDQ": "Saint-Domingue", "SEA": "Seattle",
+    "SEZ": "Seychelles", "SFO": "San Francisco", "SID": "Sal (Cap-Vert)", "SJO": "San José (Costa Rica)",
+    "SJU": "San Juan (Porto Rico)", "SNN": "Shannon", "SPC": "La Palma", "SSA": "Salvador de Bahia",
+    "SSH": "Charm el-Cheikh", "SXM": "Saint-Martin", "SYD": "Sydney", "SZG": "Salzbourg",
+    "SZZ": "Szczecin", "TAS": "Tachkent", "TBS": "Tbilissi", "TFN": "Tenerife Nord", "TGD": "Podgorica",
+    "TIV": "Tivat (Monténégro)", "TNR": "Antananarivo", "TOS": "Tromsø", "TPE": "Taipei",
+    "TRF": "Oslo (Torp)", "TRS": "Trieste", "TSR": "Timișoara", "UIO": "Quito", "USM": "Koh Samui",
+    "VGO": "Vigo", "YHZ": "Halifax", "YQB": "Québec", "YVR": "Vancouver", "YYZ": "Toronto",
+    "ZAZ": "Saragosse",
 }
 
 
