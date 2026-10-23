@@ -131,4 +131,4 @@ limites:
   # Une route sans aucun vol 3 fois de suite est mise de côté 30 jours
   routes_vides_avant_pause: 3
   routes_vides_jours_pause: 30
-  max_notifications: 15       # offres envoyées au maximum par lancement (les meilleures d'abord)
+  max_notifications: 100       # offres envoyées au maximum par lancement (les meilleures d'abord)
