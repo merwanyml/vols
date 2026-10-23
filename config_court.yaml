@@ -123,4 +123,4 @@ limites:
   part_week_end: 1.0
   # Part des recherches consacrée aux séjours de vacances (24/12 → 04/01) tant qu'ils existent.
   part_vacances: 0.25
-  max_notifications: 8
+  max_notifications: 100
