@@ -619,7 +619,7 @@ def main(config_path, data_dir):
     t0 = time.time()
     deals, ok, fails, hors = [], 0, 0, 0
     empties, succeeded, recent_empty = [], set(), []
-    consec_echecs, bloque = 0, False
+    consec_echecs, bloque, refroidi = 0, False, False
     for t in trips:
         kind, o, dest, d, r = t
         if time.time() - t0 > lim["duree_max_minutes"] * 60:
@@ -644,16 +644,19 @@ def main(config_path, data_dir):
             consec_echecs += 1
             if fails <= 8:        # on n'affiche que les premières erreurs
                 print(f"échec {o}-{dest} {d}: {str(erreur)[:100]}")
-            if fails >= 15 and ok == 0:
-                print("Trop d'échecs sans aucun succès : arrêt (Google a peut-être changé).")
-                break
             maxi_ech = lim.get("echecs_consecutifs_max", 10)
-            if consec_echecs >= maxi_ech:
-                print(f"{maxi_ech} échecs d'affilée : blocage probable, arrêt pour ne pas insister.")
-                break
             if consec_echecs == max(3, maxi_ech // 2):
                 print(f"{consec_echecs} échecs d'affilée : pause de 2 minutes.")
                 time.sleep(120)
+            if consec_echecs >= maxi_ech or (fails >= 15 and ok + hors == 0):
+                if not refroidi:   # Google nous freine : on attend 15 minutes UNE fois, puis on reprend
+                    refroidi = True
+                    print("Google refuse nos requêtes : pause de 15 minutes, puis nouvel essai.")
+                    time.sleep(900)
+                    consec_echecs = 0
+                    continue
+                print("Toujours refusé après la pause : arrêt, on réessaiera au prochain lancement.")
+                break
             pause(lim)
             continue
         consec_echecs = 0
