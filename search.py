@@ -471,7 +471,7 @@ def notify_mail(subject, body):
 
 def send_alerts(deals, cfg):
     topic = os.environ.get("NTFY_TOPIC")
-    deals = sorted(deals, key=lambda x: x["score"], reverse=True)[: cfg["limites"]["max_notifications"]]
+    deals = sorted(deals, key=lambda x: x["score"], reverse=True)
     lines = []
     for dl in deals:
         title = f"{nom(dl['origin'])} ⇄ {nom(dl['dest'])} : {dl['price']} € A/R"
@@ -539,6 +539,7 @@ def main(config_path, data_dir):
     notified_file = data_dir / "notified.json"  # offres déjà signalées
     vus_file = data_dir / "vus.json"            # dernière recherche de chaque combinaison
     zoom_file = data_dir / "zoom.json"          # routes long courrier à explorer en détail
+    notif_file = data_dir / "notif_dest.json"   # dernière offre signalée par destination
 
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if "zones" not in cfg:
@@ -553,6 +554,7 @@ def main(config_path, data_dir):
     zoom = load_json(zoom_file, {})
     zoom = {k: v for k, v in zoom.items()
             if (today - date.fromisoformat(v)).days <= rep.get("zoom_jours", 10)}
+    notif_dest = load_json(notif_file, {})
     vides = history.setdefault("_vides", {})
     minimums = history.setdefault("_min", {})   # meilleur prix relevé par route depuis le début
     obs = []                                    # prix relevés pendant ce lancement
@@ -710,12 +712,12 @@ def main(config_path, data_dir):
                         pause(lim)
                         if retour["statut"] == "aucun" and section.get("retour_strict"):
                             continue   # pas de retour au bon horaire : pas d'alerte
-                notified[nkey] = price
                 seuil = plafond(cfg, kind, dest)[0]
                 score = (1 - price / median) if median else ((1 - price / seuil) if seuil else 0.2)
                 if "🏆" in why:
                     score += 1.0   # les records passent en premier
-                deals.append({"kind": kind, "origin": o, "dest": dest, "d": d, "r": r,
+                deals.append({"kind": kind, "origin": o, "dest": dest, "d": d, "r": r, "nkey": nkey,
+                              "periode": periode_de(cfg, d) if kind == "long" else "",
                               "price": price, "why": why, "score": score, "info": info,
                               "retour": retour,
                               "link": lien_vol(o, dest, d, r, directs),
@@ -745,6 +747,39 @@ def main(config_path, data_dir):
         for k, v in vides.items() if k != "_" and v["n"] >= lim["routes_vides_avant_pause"])
     print(f"Routes mises de côté ({len(mises_de_cote)}) : " + ", ".join(mises_de_cote))
 
+    # --- tri des offres à envoyer ---
+    # 1. anti-répétition : une destination déjà signalée n'est re-signalée que si le prix est
+    #    nettement meilleur que la dernière offre envoyée (évite 5 offres à 310 € puis 1 à 280 €)
+    ar = (cfg.get("detection") or {}).get("anti_repetition") or {}
+    if ar.get("actif") and deals:
+        for k in [k for k, v in notif_dest.items() if (today - date.fromisoformat(v["d"])).days > ar.get("jours", 14)]:
+            del notif_dest[k]
+        meilleures = {}
+        for dl in deals:   # une seule offre par destination et par période : la moins chère
+            gk = f"{dl['dest']}|{dl['periode']}"
+            if gk not in meilleures or dl["price"] < meilleures[gk]["price"]:
+                meilleures[gk] = dl
+        gardees = []
+        for gk, dl in meilleures.items():
+            deja = notif_dest.get(gk)
+            if deja and dl["price"] > deja["p"] * (1 - ar.get("amelioration_pct", 10) / 100):
+                continue   # pas assez mieux que ce qui a déjà été signalé
+            gardees.append(dl)
+        print(f"Anti-répétition : {len(deals)} offre(s) -> {len(gardees)} retenue(s)")
+        deals = gardees
+    # 2. limite par lancement : seules les offres réellement envoyées sont mémorisées,
+    #    les autres seront signalées au prochain passage si elles existent encore
+    deals.sort(key=lambda x: x["score"], reverse=True)
+    maxi_notif = lim["max_notifications"]
+    if len(deals) > maxi_notif:
+        print(f"{len(deals) - maxi_notif} offre(s) au-dessus de la limite de {maxi_notif} par lancement : non envoyées.")
+    deals = deals[:maxi_notif]
+    for dl in deals:
+        notified[dl["nkey"]] = dl["price"]
+        if ar.get("actif"):
+            gk = f"{dl['dest']}|{dl['periode']}"
+            if gk not in notif_dest or dl["price"] < notif_dest[gk]["p"]:
+                notif_dest[gk] = {"p": dl["price"], "d": today.isoformat()}
     if deals:
         send_alerts(deals, cfg)
     elif os.environ.get("NTFY_TOPIC") and os.environ.get("NTFY_TEST") == "1":
@@ -758,5 +793,6 @@ def main(config_path, data_dir):
     save_json(notified_file, notified)
     save_json(vus_file, vus)
     save_json(zoom_file, zoom)
+    save_json(notif_file, notif_dest)
     if ok == 0 and trips:
         sys.exit(1)  # fait apparaître l'échec dans GitHub
