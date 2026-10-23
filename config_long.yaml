@@ -110,6 +110,13 @@ detection:
     echantillon_minimum: 15     # relevés nécessaires sur la route avant de parler de "record"
     baisse_minimum_pct: 8       # il faut battre l'ancien record d'au moins 8 % (une vraie baisse)
     garde_fou_x_plafond: 1.5    # pas d'alerte record si le prix dépasse 1,5 × le plafond de la zone
+  # Anti-répétition : pour une même destination et une même période, tu n'es prévenu qu'une fois
+  # (la moins chère), puis seulement si une nouvelle offre est au moins X % MOINS CHÈRE que la
+  # dernière signalée, pendant "jours" jours. Ex. : 310 € signalé -> 300 € ignoré, 275 € signalé.
+  anti_repetition:
+    actif: true
+    jours: 14
+    amelioration_pct: 10
 
 # --- Limites techniques (PAR LANCEMENT, il y en a 3 par jour) --
 limites:
@@ -124,4 +131,4 @@ limites:
   # Une route sans aucun vol 3 fois de suite est mise de côté 30 jours
   routes_vides_avant_pause: 3
   routes_vides_jours_pause: 30
-  max_notifications: 8
+  max_notifications: 15       # offres envoyées au maximum par lancement (les meilleures d'abord)
