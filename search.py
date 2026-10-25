@@ -360,7 +360,11 @@ def route_key(kind, origin, dest):
 
 
 def plafond(cfg, kind, dest):
-    """Plafond d'alerte selon la zone de destination (la distance, pas la durée)."""
+    """Plafond d'alerte : d'abord un plafond propre à la destination (plafonds_destination),
+    sinon celui de sa zone (la distance, pas la durée)."""
+    perso = (cfg.get("plafonds_destination") or {}).get(dest)
+    if perso:
+        return perso, "plafond propre à la destination"
     for z in cfg.get("zones", []):
         if dest in z["destinations"]:
             return z["plafond"], z["nom"]
@@ -483,6 +487,15 @@ def send_alerts(deals, cfg):
         vol = " · ".join(x for x in (dl["info"].get("compagnie"), dl["info"].get("depart")) if x)
         if vol:
             msg += f"\n✈️ Aller : {vol}"
+        pr = dl.get("prev")
+        if pr:
+            jj = date.fromisoformat(pr["d"])
+            dep = date.fromisoformat(pr["dep"])
+            avant = "Record précédent" if dl["price"] < pr["p"] else "Record enregistré"
+            msg += (f"\n📊 {avant} : {pr['p']} € (relevé le {jj:%d/%m} pour un départ le {dep:%d/%m}, "
+                    f"{pr['n']} relevés" + (f", {dl['periode']}" if dl.get("periode") else "") + ")")
+        else:
+            msg += "\n📊 Premier relevé sur cette route : pas encore de record"
         if dl["kind"] != "long":   # coût d'arrivée en ville : seulement pour le court courrier
             tr = ligne_transfert(dl["dest"])
             if tr:
@@ -719,7 +732,7 @@ def main(config_path, data_dir):
                 score = (1 - price / median) if median else ((1 - price / seuil) if seuil else 0.2)
                 if "🏆" in why:
                     score += 1.0   # les records passent en premier
-                deals.append({"kind": kind, "origin": o, "dest": dest, "d": d, "r": r, "nkey": nkey,
+                deals.append({"kind": kind, "origin": o, "dest": dest, "d": d, "r": r, "nkey": nkey, "prev": prev,
                               "periode": periode_de(cfg, d) if kind == "long" else "",
                               "price": price, "why": why, "score": score, "info": info,
                               "retour": retour,
