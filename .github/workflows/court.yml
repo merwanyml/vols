@@ -2,8 +2,8 @@ name: Court courrier (week-ends)
 
 on:
   schedule:
-    # 3 lancements par jour (heures UTC : environ 6h, 13h et 20h à Paris)
-    - cron: "0 4,11,18 * * *"
+    # 4 lancements par jour (heures UTC : environ 4h, 10h, 16h et 22h à Paris)
+    - cron: "0 3,9,15,21 * * *"
   workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
     inputs:
       test_notification:
