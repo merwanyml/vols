@@ -56,6 +56,14 @@ destinations_en_pause:
   jusqu_au: "2027-02-15"
   codes: [CMN, RAK, TUN, AGA, TNG, FEZ, DJE, ALG, ORN]   # tout le Maghreb
 
+# Plafond propre à une destination (prioritaire sur celui de sa zone). Utile pour une destination
+# qui revient trop souvent : baisse son plafond ici.
+plafonds_destination:
+  SID: 280     # Sal (Cap-Vert)
+  TBS: 200     # Tbilissi
+  EVN: 200     # Erevan
+  GYD: 220     # Bakou
+
 # --- Destinations et plafonds d'alerte, selon la DISTANCE (pas la durée) ---
 # Si l'aller-retour passe sous le plafond de sa zone, tu es prévenu tout de suite.
 # Pour ajouter une destination : mets son code dans la zone qui correspond
@@ -131,4 +139,4 @@ limites:
   # Une route sans aucun vol 3 fois de suite est mise de côté 30 jours
   routes_vides_avant_pause: 3
   routes_vides_jours_pause: 30
-  max_notifications: 100       # offres envoyées au maximum par lancement (les meilleures d'abord)
+  max_notifications: 15       # offres envoyées au maximum par lancement (les meilleures d'abord)
