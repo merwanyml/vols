@@ -1,0 +1,29 @@
+name: Page de recherche des offres
+
+on:
+  schedule:
+    # deux fois par jour (heures UTC)
+    - cron: "30 6,18 * * *"
+  workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
+
+permissions:
+  contents: write
+
+jobs:
+  page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Fabriquer la page
+        run: python synthese.py
+      - name: Sauvegarder la page
+        run: |
+          git config user.name "vols-bot"
+          git config user.email "vols-bot@users.noreply.github.com"
+          git add data/synthese || true
+          git diff --cached --quiet || (git commit -m "Page de recherche" && git pull --rebase && git push)
