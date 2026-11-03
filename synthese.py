@@ -12,6 +12,7 @@ import yaml
 
 import bilan
 import couts
+import geo
 import search
 from noms import nom
 
@@ -54,7 +55,8 @@ def construire(today):
         for (cat, dest), lst in groupes.items():
             if cat not in cats:
                 cats.append(cat)
-            meta_dest.setdefault(dest, {"n": nom(dest)})
+            continent, pays = geo.geo(dest)
+            meta_dest.setdefault(dest, {"n": nom(dest), "k": continent, "p": pays})
             lst.sort(key=lambda x: x[0]["prix"])
             for r, plaf in lst[:MAX_PAR_GROUPE]:
                 nuits = (r["_retour"] - r["_aller"]).days
@@ -91,12 +93,19 @@ input,select{width:100%;padding:11px;font:inherit;border:1px solid var(--line);b
 .m{color:var(--mut);font-size:.85rem}.d{font-weight:600}
 a{color:var(--acc)}
 .info{color:var(--mut);font-size:.85rem;margin:6px 0}
+details.c{padding:0}details.c>summary{list-style:none;cursor:pointer;padding:11px 13px}
+details.c>summary::-webkit-details-marker{display:none}
+.plus{color:var(--acc);font-size:.9rem;margin-top:6px;font-weight:600}
+details[open] .plus::after{content:" (replier)"}
+.sub{border-top:1px solid var(--line);padding:8px 13px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.sub .px{font-size:1.05rem}
 </style></head><body><main>
 <h1>✈️ Offres de vols</h1>
 <div class="ctl">
  <input id="q" type="search" placeholder="Destination (ex. Prague, Bakou, BKK…)" autocomplete="off" list="dl">
  <datalist id="dl"></datalist>
  <div class="row"><select id="cat"></select><select id="dep"></select></div>
+ <div class="row"><select id="kont"></select><select id="pays"></select></div>
  <div class="row"><select id="tri"><option value="p">Du moins cher au plus cher</option><option value="d">Par date de départ</option><option value="t">Par coût total estimé</option></select>
  <select id="ok"><option value="0">Tous les prix</option><option value="1">Seulement sous le plafond</option></select></div>
 </div>
@@ -114,26 +123,49 @@ const nuits=(a,b)=>Math.round((new Date(b)-new Date(a))/864e5);
 $("cat").innerHTML=D.cats.map((c,i)=>`<option value="${i}">${c}</option>`).join("");
 $("dep").innerHTML='<option value="">Tous les départs</option>'+Object.entries(D.departs).sort((a,b)=>a[1].localeCompare(b[1])).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
 $("dl").innerHTML=Object.entries(D.dests).map(([k,v])=>`<option value="${v.n}">`).join("");
+const konts=[...new Set(Object.values(D.dests).map(v=>v.k))].sort();
+$("kont").innerHTML='<option value="">Tous les continents</option>'+konts.map(k=>`<option>${k}</option>`).join("");
+function paysList(){
+  const k=$("kont").value;
+  const ps=[...new Set(Object.values(D.dests).filter(v=>!k||v.k===k).map(v=>v.p))].sort();
+  $("pays").innerHTML='<option value="">Tous les pays</option>'+ps.map(p=>`<option>${p}</option>`).join("");
+}
+paysList();
 $("foot").textContent="Données du journal d'observations ("+D.genere.split("-").reverse().join("/")+"). Prix vus par Google Flights au moment du relevé : à revérifier avant de réserver. Séjour estimé = vol + hôtel + transferts (estimations).";
+const SEUIL=3;   // au-delà de 3 offres pour une même destination, on les regroupe dans un bloc
+function lien(o,dest,a,b){return "https://www.google.com/travel/flights?hl=fr&curr=EUR&q="+encodeURIComponent(`Flights from ${o} to ${dest} on ${a} through ${b}`)}
+function flag(p,plaf){return p<=plaf?`<span class="ok">✅ sous le plafond (${plaf} €)</span>`:(plaf?`<span class="warn">${Math.round((p/plaf-1)*100)} % au-dessus du plafond (${plaf} €)</span>`:"")}
+function card(x,cat,inner){
+  const [,o,dest,a,b,p,seen,cie,tot,plaf]=x,rec=D.records[dest+"|"+o+"|"+D.cats[cat]];
+  const recl=rec?`Record : ${rec[0]} € (vu le ${fd(rec[1])})`+(p<=rec[0]?" · 🏆 égale/bat le record":""):"";
+  return `<div class="top"><div><div class="d">${D.departs[o]} ⇄ ${D.dests[dest].n}</div><div>${fj(a)} → ${fj(b)} · ${nuits(a,b)} nuits</div></div><div class="px ${p<=plaf?"ok":""}">${p} €</div></div>
+  <div class="m">${flag(p,plaf)}</div><div class="m">${recl}</div>
+  <div class="m">Séjour estimé ≈ ${tot} € · ${cie||"compagnie inconnue"} · vu le ${fd(seen)} · <a href="${lien(o,dest,a,b)}" target="_blank" rel="noopener">Google Flights</a></div>`;
+}
+function sub(x){
+  const [,o,dest,a,b,p,seen,cie,tot,plaf]=x;
+  return `<div class="sub"><div><div>${fj(a)} → ${fj(b)} · ${nuits(a,b)} nuits</div><div class="m">${D.departs[o]} · ${flag(p,plaf)} · ≈ ${tot} € tout compris · ${cie||"?"} · vu le ${fd(seen)} · <a href="${lien(o,dest,a,b)}" target="_blank" rel="noopener">Google Flights</a></div></div><div class="px ${p<=plaf?"ok":""}">${p} €</div></div>`;
+}
 function render(){
-  const q=norm($("q").value.trim()),cat=+$("cat").value,dep=$("dep").value,tri=$("tri").value,seul=$("ok").value==="1";
+  const q=norm($("q").value.trim()),cat=+$("cat").value,dep=$("dep").value,tri=$("tri").value,seul=$("ok").value==="1",k=$("kont").value,pa=$("pays").value;
   let r=D.rows.filter(x=>x[0]===cat&&(!dep||x[1]===dep));
-  if(q)r=r.filter(x=>norm(D.dests[x[2]].n).includes(q)||norm(x[2]).includes(q));
+  if(k)r=r.filter(x=>D.dests[x[2]].k===k);
+  if(pa)r=r.filter(x=>D.dests[x[2]].p===pa);
+  if(q)r=r.filter(x=>norm(D.dests[x[2]].n).includes(q)||norm(x[2]).includes(q)||norm(D.dests[x[2]].p).includes(q));
   if(seul)r=r.filter(x=>x[9]&&x[5]<=x[9]);
   r.sort((a,b)=>tri==="d"?a[3].localeCompare(b[3])||a[5]-b[5]:tri==="t"?a[8]-b[8]:a[5]-b[5]);
-  const n=r.length;r=r.slice(0,60);
-  $("info").textContent=n?n+" offre(s)"+(n>60?" (60 affichées, précise la destination)":""):"Aucune offre pour ces critères.";
-  $("out").innerHTML=r.map(x=>{
-    const [,o,dest,a,b,p,seen,cie,tot,plaf]=x,N=D.dests[dest].n,rec=D.records[dest+"|"+o+"|"+D.cats[cat]];
-    const sous=plaf&&p<=plaf,rapport=plaf?(p/plaf):0;
-    const lien="https://www.google.com/travel/flights?hl=fr&curr=EUR&q="+encodeURIComponent(`Flights from ${o} to ${dest} on ${a} through ${b}`);
-    const flag=sous?`<span class="ok">✅ sous le plafond (${plaf} €)</span>`:(plaf?`<span class="warn">${Math.round((rapport-1)*100)} % au-dessus du plafond (${plaf} €)</span>`:"");
-    const recl=rec?`Record : ${rec[0]} € (vu le ${fd(rec[1])})`+(p<=rec[0]?" · 🏆 égale/bat le record":""):"";
-    return `<div class="c"><div class="top"><div><div class="d">${D.departs[o]} ⇄ ${N}</div><div>${fj(a)} → ${fj(b)} · ${nuits(a,b)} nuits</div></div><div class="px ${sous?"ok":""}">${p} €</div></div>
-    <div class="m">${flag}</div><div class="m">${recl}</div>
-    <div class="m">Séjour estimé ≈ ${tot} € · ${cie||"compagnie inconnue"} · vu le ${fd(seen)} · <a href="${lien}" target="_blank" rel="noopener">Google Flights</a></div></div>`}).join("");
+  const g=new Map();                       // destination -> offres, dans l'ordre du tri
+  r.forEach(x=>{if(!g.has(x[2]))g.set(x[2],[]);g.get(x[2]).push(x)});
+  const groupes=[...g.values()];
+  $("info").textContent=r.length?`${groupes.length} destination(s), ${r.length} offre(s)`+(groupes.length>50?" (50 premières affichées, filtre par pays ou continent)":""):"Aucune offre pour ces critères.";
+  $("out").innerHTML=groupes.slice(0,50).map(l=>{
+    if(l.length<=SEUIL)return l.map(x=>`<div class="c">${card(x,cat)}</div>`).join("");
+    const n=l.length-1;
+    return `<details class="c"><summary>${card(l[0],cat)}<div class="plus">+ ${n} autre${n>1?"s":""} date${n>1?"s":""} pour ${D.dests[l[0][2]].n}</div></summary>${l.slice(1).map(sub).join("")}</details>`;
+  }).join("");
 }
-["q","cat","dep","tri","ok"].forEach(i=>$(i).addEventListener("input",render));
+$("kont").addEventListener("input",()=>{paysList();render()});
+["q","cat","dep","tri","ok","pays"].forEach(i=>$(i).addEventListener("input",render));
 render();
 </script></body></html>
 """
