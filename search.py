@@ -15,6 +15,7 @@ import random
 import re
 import smtplib
 import statistics
+from collections import deque
 import sys
 import time
 import urllib.parse
@@ -359,17 +360,23 @@ def route_key(kind, origin, dest):
     return f"{kind}|{origin}|{dest}"
 
 
+def zone_de(cfg, dest):
+    """Nom de la zone de distance d'une destination (ou 'plafond par défaut')."""
+    for z in cfg.get("zones", []):
+        if dest in z["destinations"]:
+            return z["nom"]
+    return "plafond par défaut"
+
+
 def plafond(cfg, kind, dest):
     """Plafond d'alerte : d'abord un plafond propre à la destination (plafonds_destination),
     sinon celui de sa zone (la distance, pas la durée)."""
     perso = (cfg.get("plafonds_destination") or {}).get(dest)
-    if perso:
-        return perso, "plafond propre à la destination"
     for z in cfg.get("zones", []):
         if dest in z["destinations"]:
-            return z["plafond"], z["nom"]
+            return (perso or z["plafond"]), z["nom"]
     section = cfg.get(SECTIONS.get(kind, "long_sejour"), {})
-    return section.get("prix_max_alerte", 0), "plafond par défaut"
+    return (perso or section.get("prix_max_alerte", 0)), "plafond par défaut"
 
 
 def evaluate(cfg, kind, dest, price, google_opinion, history_prices, record=None):
@@ -522,9 +529,10 @@ def send_alerts(deals, cfg):
 # ---------------------------------------------------------------
 #  5. Programme principal
 # ---------------------------------------------------------------
-def pause(lim):
+def pause(lim, facteur=1.0):
+    """Pause aléatoire entre deux recherches ; facteur > 1 quand Google nous freine."""
     p = lim["pause_secondes"]
-    time.sleep(random.uniform(p[0], p[1]) if isinstance(p, (list, tuple)) else p)
+    time.sleep(facteur * (random.uniform(p[0], p[1]) if isinstance(p, (list, tuple)) else p))
 
 
 def cle_vides(kind, o, dest):
@@ -632,7 +640,14 @@ def main(config_path, data_dir):
     t0 = time.time()
     deals, ok, fails, hors = [], 0, 0, 0
     empties, succeeded, recent_empty = [], set(), []
-    consec_echecs, bloque, refroidi = 0, False, False
+    consec_echecs, bloque, refroidi = 0, False, 0
+    recent = deque(maxlen=30)   # 1 = échec, 0 = réponse de Google, sur les 30 dernières recherches
+
+    def facteur_pause():
+        """On ralentit d'autant plus que Google refuse de requêtes (jusqu'à ×6)."""
+        if len(recent) < 10:
+            return 1.0
+        return 1 + 5 * sum(recent) / len(recent)
     for t in trips:
         kind, o, dest, d, r = t
         if time.time() - t0 > lim["duree_max_minutes"] * 60:
@@ -655,25 +670,27 @@ def main(config_path, data_dir):
         if erreur is not None:
             fails += 1
             consec_echecs += 1
+            recent.append(1)
             if fails <= 8:        # on n'affiche que les premières erreurs
                 print(f"échec {o}-{dest} {d}: {str(erreur)[:100]}")
             maxi_ech = lim.get("echecs_consecutifs_max", 10)
-            if consec_echecs == max(3, maxi_ech // 2):
-                print(f"{consec_echecs} échecs d'affilée : pause de 2 minutes.")
-                time.sleep(120)
-            if consec_echecs >= maxi_ech or (fails >= 15 and ok + hors == 0):
-                if not refroidi:   # Google nous freine : on attend 15 minutes UNE fois, puis on reprend
-                    refroidi = True
-                    print("Google refuse nos requêtes : pause de 15 minutes, puis nouvel essai.")
-                    time.sleep(900)
+            if (consec_echecs >= maxi_ech or (fails >= 15 and ok + hors == 0)
+                    or (len(recent) >= 30 and sum(recent) / len(recent) >= 0.6)):
+                # Google nous freine : on se calme (10 puis 20 minutes), puis on arrête pour de bon
+                refroidi += 1
+                if refroidi <= 2:
+                    print(f"Google refuse trop de requêtes : pause de {10 * refroidi} minutes, puis nouvel essai.")
+                    time.sleep(600 * refroidi)
                     consec_echecs = 0
+                    recent.clear()
                     continue
-                print("Toujours refusé après la pause : arrêt, on réessaiera au prochain lancement.")
+                print("Toujours refusé après les pauses : arrêt, on réessaiera au prochain lancement.")
                 break
-            pause(lim)
+            pause(lim, facteur_pause())
             continue
         consec_echecs = 0
-        pause(lim)
+        recent.append(0)
+        pause(lim, facteur_pause())
         key = route_key(kind, o, dest)
         vkey = cle_vides(kind, o, dest)
         # records et historique : par période pour le long courrier (avril, été, Noël n'ont pas les mêmes prix)
