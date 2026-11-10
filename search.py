@@ -644,10 +644,11 @@ def main(config_path, data_dir):
     recent = deque(maxlen=30)   # 1 = échec, 0 = réponse de Google, sur les 30 dernières recherches
 
     def facteur_pause():
-        """On ralentit d'autant plus que Google refuse de requêtes (jusqu'à ×6)."""
+        """Léger ralentissement quand Google refuse beaucoup de requêtes (jusqu'à ×1,5 seulement :
+        un fort ralentissement fait perdre plus de prix qu'il n'en évite)."""
         if len(recent) < 10:
             return 1.0
-        return 1 + 5 * sum(recent) / len(recent)
+        return 1 + 0.5 * sum(recent) / len(recent)
     for t in trips:
         kind, o, dest, d, r = t
         if time.time() - t0 > lim["duree_max_minutes"] * 60:
@@ -674,12 +675,14 @@ def main(config_path, data_dir):
             if fails <= 8:        # on n'affiche que les premières erreurs
                 print(f"échec {o}-{dest} {d}: {str(erreur)[:100]}")
             maxi_ech = lim.get("echecs_consecutifs_max", 10)
-            if (consec_echecs >= maxi_ech or (fails >= 15 and ok + hors == 0)
-                    or (len(recent) >= 30 and sum(recent) / len(recent) >= 0.6)):
-                # Google nous freine : on se calme (10 puis 20 minutes), puis on arrête pour de bon
+            if consec_echecs == max(3, maxi_ech // 2):
+                print(f"{consec_echecs} échecs d'affilée : pause de 60 secondes.")
+                time.sleep(60)
+            if consec_echecs >= maxi_ech or (fails >= 15 and ok + hors == 0):
+                # blocage franc (échecs sans AUCUN succès entre deux) : pause de 10 puis 20 minutes, puis arrêt
                 refroidi += 1
                 if refroidi <= 2:
-                    print(f"Google refuse trop de requêtes : pause de {10 * refroidi} minutes, puis nouvel essai.")
+                    print(f"Google refuse tout : pause de {10 * refroidi} minutes, puis nouvel essai.")
                     time.sleep(600 * refroidi)
                     consec_echecs = 0
                     recent.clear()
@@ -818,6 +821,16 @@ def main(config_path, data_dir):
     elif os.environ.get("NTFY_TOPIC") and os.environ.get("NTFY_TEST") == "1":
         notify_ntfy(os.environ["NTFY_TOPIC"], "Test", f"Le détecteur fonctionne ({ok} prix relevés).")
 
+    try:   # une ligne par lancement : sert au diagnostic dans le bilan
+        lf = data_dir / "lancements.csv"
+        neuf = not lf.exists()
+        with lf.open("a", encoding="utf-8") as fh:
+            if neuf:
+                fh.write("date,heure,prevues,prix,hors_horaire,sans_resultat,echecs,minutes,pauses_longues,offres\n")
+            fh.write(f"{today.isoformat()},{datetime.now():%H:%M},{len(trips)},{ok},{hors},{len(empties)},"
+                     f"{fails},{mins:.0f},{refroidi},{len(deals)}\n")
+    except Exception as e:
+        print("journal des lancements : erreur", e)
     try:
         ecrire_observations(data_dir, today, obs)
     except Exception as e:   # le journal ne doit jamais faire échouer la recherche
