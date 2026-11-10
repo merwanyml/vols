@@ -133,7 +133,20 @@ function paysList(){
 paysList();
 $("foot").textContent="Données du journal d'observations ("+D.genere.split("-").reverse().join("/")+"). Prix vus par Google Flights au moment du relevé : à revérifier avant de réserver. Séjour estimé = vol + hôtel + transferts (estimations).";
 const SEUIL=3;   // au-delà de 3 offres pour une même destination, on les regroupe dans un bloc
-function lien(o,dest,a,b){return "https://www.google.com/travel/flights?hl=fr&curr=EUR&q="+encodeURIComponent(`Flights from ${o} to ${dest} on ${a} through ${b}`)}
+// lien Google Flights pré-rempli (aéroports, dates, aller-retour, euros) : même construction que le script
+const vi=n=>{const o=[];do{let b=n&127;n>>>=7;if(n)b|=128;o.push(b)}while(n);return o};
+const ch=(num,pl)=>[...vi((num<<3)|2),...vi(pl.length),...pl];
+const enc=s=>[...new TextEncoder().encode(s)];
+const aero=c=>[8,1,...ch(2,enc(c))];
+const vol=(j,d,a,dir)=>[...ch(2,enc(j)),...(dir?[0x28,0]:[]),...ch(13,aero(d)),...ch(14,aero(a))];
+function tfs(o,dest,a,b,dir){
+  const x=[8,0x1c,0x10,2,...ch(3,vol(a,o,dest,dir)),...ch(3,vol(b,dest,o,dir)),0x40,1,0x48,1,0x70,1,...ch(16,[8,...Array(9).fill(255),1]),0x98,1,1];
+  return btoa(String.fromCharCode(...x)).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
+}
+function lien(o,dest,a,b){
+  const direct=!D.cats[+$("cat").value].startsWith("Long");   // court courrier : vols directs seulement
+  return `https://www.google.com/travel/flights/search?tfs=${tfs(o,dest,a,b,direct)}&hl=fr&curr=EUR`;
+}
 function flag(p,plaf){return p<=plaf?`<span class="ok">✅ sous le plafond (${plaf} €)</span>`:(plaf?`<span class="warn">${Math.round((p/plaf-1)*100)} % au-dessus du plafond (${plaf} €)</span>`:"")}
 function card(x,cat,inner){
   const [,o,dest,a,b,p,seen,cie,tot,plaf]=x,rec=D.records[dest+"|"+o+"|"+D.cats[cat]];
