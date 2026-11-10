@@ -219,14 +219,42 @@ def analyser(nom_dossier, titre, fichier_cfg, today):
     return md, court
 
 
+def sante(dossier, today):
+    """Résumé des lancements des 7 derniers jours (data/<dossier>/lancements.csv)."""
+    f = ICI / "data" / dossier / "lancements.csv"
+    if not f.exists():
+        return [], ""
+    rows = []
+    with f.open(encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            try:
+                if (today - date.fromisoformat(r["date"])).days < 7:
+                    rows.append({k: int(v) if k not in ("date", "heure") else v for k, v in r.items()})
+            except (ValueError, TypeError, KeyError):
+                continue
+    if not rows:
+        return [], ""
+    n = len(rows)
+    tot = {k: sum(r[k] for r in rows) for k in ("prevues", "prix", "hors_horaire", "sans_resultat", "echecs", "pauses_longues")}
+    faits = tot["prix"] + tot["hors_horaire"] + tot["sans_resultat"] + tot["echecs"]
+    pct = lambda x: f"{round(100 * x / faits)} %" if faits else "–"
+    md = [f"**Santé des lancements** ({n} lancements en 7 jours, {faits} recherches faites) : "
+          f"{pct(tot['prix'])} avec un prix, {pct(tot['hors_horaire'])} hors horaire, "
+          f"{pct(tot['sans_resultat'])} sans vol, {pct(tot['echecs'])} échecs de Google. "
+          f"Pauses anti-blocage : {tot['pauses_longues']}. Durée moyenne : {round(sum(r['minutes'] for r in rows) / n)} min.\n"]
+    court = f"Lancements: {n}, {pct(tot['prix'])} avec prix, {pct(tot['echecs'])} échecs Google."
+    return md, court
+
+
 def main():
     today = date.today()
     md = [f"# Bilan de la semaine du {today:%d/%m/%Y}", ""]
     court = [f"📊 Bilan du {today:%d/%m}"]
     for dossier, titre, cfg in SOURCES:
         m, c = analyser(dossier, titre, cfg, today)
-        md += m
-        court += [""] + c
+        sm, sc = sante(dossier, today)
+        md += m[:2] + sm + m[2:]
+        court += [""] + c + ([sc] if sc else [])
     md += ["---",
            f"_Transferts et hôtels : {couts.ESTIMATION}, par personne, chambre double partagée. "
            "Les prix des vols sont ceux vus par Google Flights au moment du relevé._"]
