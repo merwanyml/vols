@@ -732,3 +732,5 @@ releve,type,depart,destination,aller,retour,prix,compagnie
 2026-11-14,v,CDG,TRN,2026-12-24,2026-12-27,167,Air France
 2026-11-14,v,CDG,BUD,2026-12-30,2027-01-02,360,easyJet
 2026-11-14,v,CRL,ATH,2026-12-26,2026-12-28,292,Ryanair
+2026-11-14,w,CDG,DUB,2026-12-03,2026-12-06,167,Air France
+2026-11-14,w,CRL,BUD,2027-01-22,2027-01-24,50,Wizz Air
