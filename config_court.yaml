@@ -112,11 +112,11 @@ detection:
     marge_euros: 5              # alerte si le prix est à moins de 5 € du minimum enregistré
     garde_fou_x_plafond: 1.5    # pas d'alerte record si le prix dépasse 1,5 × le plafond de la zone
 
-# --- Limites techniques (PAR LANCEMENT, il y en a 3 par jour) --
+# --- Limites techniques (PAR LANCEMENT, il y en a 4 par jour) --
 limites:
   # L'outil s'arrête à la première de ces deux limites.
-  recherches_max: 1500
-  duree_max_minutes: 140
+  recherches_max: 2000
+  duree_max_minutes: 165
   # Pause entre deux recherches, tirée au hasard entre ces deux valeurs (en secondes).
   # Plus c'est lent, moins Google nous remarque : le temps d'exécution n'a pas d'importance.
   pause_secondes: [2.0, 4.5]
