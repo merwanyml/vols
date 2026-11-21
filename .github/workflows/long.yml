@@ -1,46 +1,39 @@
-name: Long courrier (avril, été)
+name: Court courrier (week-ends)
 
 on:
   schedule:
-    # 3 lancements par jour (heures UTC : environ 9h, 16h et minuit à Paris),
-    # décalés par rapport au court courrier pour ne pas tourner en même temps
-    - cron: "0 7,14,22 * * *"
+    # 4 lancements par jour (heures UTC), décalés pour ne jamais tourner en même temps que le long courrier
+    - cron: "0 0,6,12,18 * * *"
   workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
-    inputs:
-      test_notification:
-        description: "Envoyer une notification de test"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
 
-# un seul lancement à la fois pour ce script (évite les conflits sur l'historique)
 concurrency:
-  group: vols-long
+  group: vols-court
   cancel-in-progress: false
 
 jobs:
-  chercher:
+  recherche:
     runs-on: ubuntu-latest
-    timeout-minutes: 140
+    timeout-minutes: 190
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - name: Lancer la recherche
+      - name: Chercher les offres
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          NTFY_TEST: ${{ inputs.test_notification && '1' || '0' }}
-        run: python long_courrier.py
-      - name: Sauvegarder l'historique des prix
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python court_courrier.py
+      - name: Sauvegarder les données
         if: always()
         run: |
           git config user.name "vols-bot"
           git config user.email "vols-bot@users.noreply.github.com"
-          git add data/long || true
-          git diff --cached --quiet || (git commit -m "Historique long courrier" && git pull --rebase && git push)
+          git add data/court || true
+          git diff --cached --quiet || (git commit -m "Données court courrier" && git pull --rebase && git push)
