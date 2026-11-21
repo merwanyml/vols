@@ -126,11 +126,11 @@ detection:
     jours: 14
     amelioration_pct: 10
 
-# --- Limites techniques (PAR LANCEMENT, il y en a 3 par jour) --
+# --- Limites techniques (PAR LANCEMENT, il y en a 4 par jour) --
 limites:
   # L'outil s'arrête à la première de ces deux limites.
-  recherches_max: 1000
-  duree_max_minutes: 110
+  recherches_max: 1300
+  duree_max_minutes: 130
   # Pause entre deux recherches, tirée au hasard entre ces deux valeurs (en secondes).
   # Plus c'est lent, moins Google nous remarque : le temps d'exécution n'a pas d'importance.
   pause_secondes: [2.0, 4.5]
