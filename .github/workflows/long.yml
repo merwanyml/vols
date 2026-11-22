@@ -1,22 +1,22 @@
-name: Court courrier (week-ends)
+name: Long courrier (avril, été)
 
 on:
   schedule:
-    # 4 lancements par jour (heures UTC), décalés pour ne jamais tourner en même temps que le long courrier
-    - cron: "0 0,6,12,18 * * *"
+    # 4 lancements par jour (heures UTC), décalés pour ne jamais tourner en même temps que le court courrier
+    - cron: "0 3,9,15,21 * * *"
   workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
 
 permissions:
   contents: write
 
 concurrency:
-  group: vols-court
+  group: vols-long
   cancel-in-progress: false
 
 jobs:
   recherche:
     runs-on: ubuntu-latest
-    timeout-minutes: 190
+    timeout-minutes: 160
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,11 +29,11 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
-        run: python court_courrier.py
+        run: python long_courrier.py
       - name: Sauvegarder les données
         if: always()
         run: |
           git config user.name "vols-bot"
           git config user.email "vols-bot@users.noreply.github.com"
-          git add data/court || true
-          git diff --cached --quiet || (git commit -m "Données court courrier" && git pull --rebase && git push)
+          git add data/long || true
+          git diff --cached --quiet || (git commit -m "Données long courrier" && git pull --rebase && git push)
