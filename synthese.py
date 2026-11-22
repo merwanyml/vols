@@ -14,6 +14,7 @@ import bilan
 import couts
 import geo
 import search
+import verifier
 from noms import nom
 
 ICI = Path(__file__).parent
@@ -34,6 +35,7 @@ def categorie(cfg, r):
 
 def construire(today):
     lignes, recentes, meta_dest, records, cats = [], [], {}, {}, []
+    verifs = verifier.lire_verifications()
 
     def ligne(cat, r, plaf):
         if cat not in cats:
@@ -49,7 +51,8 @@ def construire(today):
         if r["type"] != "l" and dest in couts.TRANSFERT:
             total += couts.TRANSFERT[dest][1]
         return [cats.index(cat), r["depart"], dest, r["aller"], r["retour"], r["prix"],
-                r["releve"], r["compagnie"], round(total), plaf]
+                r["releve"], r["compagnie"], round(total), plaf,
+                r.get("_ancien", 0), r.get("_note", ""), r.get("_verif", "")]
 
     for dossier, _, fichier in bilan.SOURCES:
         cfg = yaml.safe_load((ICI / fichier).read_text(encoding="utf-8"))
@@ -65,8 +68,28 @@ def construire(today):
             if (today - r["_rel"]).days > FENETRE_JOURS or r["_aller"] <= today:
                 continue
             ck = (cat, r["depart"], r["destination"], r["aller"], r["retour"])
-            if ck not in meilleurs or r["prix"] < meilleurs[ck]["prix"]:
-                meilleurs[ck] = r
+            meilleurs[ck] = r   # relevés dans l'ordre chronologique : le plus récent l'emporte (prix actuel)
+        # revérifications (verifier.py) : plus récentes que le relevé -> elles corrigent le prix affiché
+        for ck, r in list(meilleurs.items()):
+            v = verifs.get((r["type"], r["depart"], r["destination"], r["aller"], r["retour"]))
+            if not v or v["verifie"] < r["releve"]:
+                continue
+            r = dict(r)
+            r["_verif"] = v["verifie"]
+            if v["statut"] == "introuvable":
+                if v["introuvable_n"] >= 2:
+                    del meilleurs[ck]       # introuvable deux fois de suite : masquée
+                    continue
+                r["_note"] = "d"            # doute : à revérifier
+            else:
+                if v["apres"] != v["avant"]:
+                    r["_ancien"] = v["avant"]
+                r["prix"] = v["apres"]
+                r["_note"] = {"baisse": "b", "hausse": "h"}.get(v["statut"], "o")
+                if v["statut"] == "baisse":  # une baisse = une nouvelle offre : elle remonte en tête
+                    r["releve"] = v["verifie"]
+                    r["_rel"] = date.fromisoformat(v["verifie"])
+            meilleurs[ck] = r
         groupes, derniers = {}, {}
         for ck, r in meilleurs.items():
             plaf, _ = search.plafond(cfg, bilan.KIND[r["type"]], r["destination"])
@@ -183,16 +206,24 @@ function lien(o,dest,a,b,cat){
   return `https://www.google.com/travel/flights/search?tfs=${tfs(o,dest,a,b,direct)}&hl=fr&curr=EUR`;
 }
 function flag(p,plaf){return p<=plaf?`<span class="ok">✅ sous le plafond (${plaf} €)</span>`:(plaf?`<span class="warn">${Math.round((p/plaf-1)*100)} % au-dessus du plafond (${plaf} €)</span>`:"")}
+function note(x){
+  const [,, , , ,p, , , , ,ancien,etat,verif]=x;
+  if(etat==="b")return `<div class="m ok">📉 Baissé de ${ancien} € à ${p} € (vérifié le ${fd(verif)})</div>`;
+  if(etat==="h")return `<div class="m warn">📈 Monté de ${ancien} € à ${p} € (vérifié le ${fd(verif)})</div>`;
+  if(etat==="o")return `<div class="m">✔️ Prix confirmé le ${fd(verif)}</div>`;
+  if(etat==="d")return `<div class="m warn">⚠️ Introuvable à la dernière vérification (${fd(verif)}) : à revérifier</div>`;
+  return "";
+}
 function card(x){
   const [cat,o,dest,a,b,p,seen,cie,tot,plaf]=x,rec=D.records[dest+"|"+o+"|"+D.cats[cat]];
   const recl=rec?`Record : ${rec[0]} € (vu le ${fd(rec[1])})`+(p<=rec[0]?" · 🏆 égale/bat le record":""):"";
   return `<div class="top"><div><div class="d">${neuf(seen)}${D.departs[o]} ⇄ ${D.dests[dest].n}</div><div>${fj(a)} → ${fj(b)} · ${nuits(a,b)} nuits · <span class="m">${D.cats[cat]}</span></div></div><div class="px ${p<=plaf?"ok":""}">${p} €</div></div>
-  <div class="m">${flag(p,plaf)}</div><div class="m">${recl}</div>
+  <div class="m">${flag(p,plaf)}</div>${note(x)}<div class="m">${recl}</div>
   <div class="m">Séjour estimé ≈ ${tot} € · ${cie||"compagnie inconnue"} · vu le ${fd(seen)} · <a href="${lien(o,dest,a,b,cat)}" target="_blank" rel="noopener">Google Flights</a></div>`;
 }
 function sub(x){
   const [cat,o,dest,a,b,p,seen,cie,tot,plaf]=x;
-  return `<div class="sub"><div><div>${fj(a)} → ${fj(b)} · ${nuits(a,b)} nuits <span class="m">· ${D.cats[cat]}</span></div><div class="m">${D.departs[o]} · ${flag(p,plaf)} · ≈ ${tot} € tout compris · ${cie||"?"} · vu le ${fd(seen)} · <a href="${lien(o,dest,a,b,cat)}" target="_blank" rel="noopener">Google Flights</a></div></div><div class="px ${p<=plaf?"ok":""}">${p} €</div></div>`;
+  return `<div class="sub"><div><div>${fj(a)} → ${fj(b)} · ${nuits(a,b)} nuits <span class="m">· ${D.cats[cat]}</span></div><div class="m">${D.departs[o]} · ${flag(p,plaf)} ${x[11]==="b"?"· 📉 baissé de "+x[10]+" €":x[11]==="h"?"· 📈 monté de "+x[10]+" €":x[11]==="d"?"· ⚠️ à revérifier":""} · ≈ ${tot} € tout compris · ${cie||"?"} · vu le ${fd(seen)} · <a href="${lien(o,dest,a,b,cat)}" target="_blank" rel="noopener">Google Flights</a></div></div><div class="px ${p<=plaf?"ok":""}">${p} €</div></div>`;
 }
 function render(){
   const q=norm($("q").value.trim()),cat=+$("cat").value,dep=$("dep").value,tri=$("tri").value,seul=$("ok").value==="1",k=$("kont").value,pa=$("pays").value;
