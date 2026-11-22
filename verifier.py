@@ -7,7 +7,7 @@ voyage précis. Le résultat est noté dans data/verifications/verif-AAAA-MM.csv
   - hausse    : le prix a monté   -> le site affiche le nouveau prix (et masque l'offre si elle dépasse
                                      2,5 x le plafond, ou si elle n'est plus sous le plafond dans « Dernières offres »)
   - ok        : prix confirmé
-  - introuvable : plus de vol à cet horaire. L'offre n'est masquée qu'après 2 constats d'affilée.
+  Un vol qui n'est plus trouvé n'est PAS signalé et l'offre n'est pas masquée : on ne note rien.
 Rien n'est supprimé de la base d'observations : les records et les bilans gardent tout l'historique.
 Réglages : bloc « verification » de config_court.yaml et config_long.yaml."""
 import csv
@@ -63,9 +63,7 @@ def candidats(today):
             v = verifs.get(k)
             prix = r["prix"]
             if v and v["verifie"] >= r["releve"]:
-                if v["statut"] == "introuvable" and v["introuvable_n"] >= 2:
-                    continue   # déjà masquée, la recherche normale la fera revenir si elle réapparaît
-                if v["statut"] != "introuvable":
+                if v["statut"] != "introuvable":   # anciennes lignes éventuelles : ignorées
                     prix = v["apres"]
             plaf, _ = search.plafond(cfg, bilan.KIND[r["type"]], r["destination"])
             if not plaf or prix > plaf * reg["ratio_max"]:
@@ -86,7 +84,7 @@ def main():
     liste = liste[: reg["recherches_max"]]
     print(f"{len(liste)} offre(s) à vérifier.")
     t0 = time.time()
-    sorties, consec_echecs, consec_introuvables = [], 0, 0
+    sorties, consec_echecs, consec_introuvables = [], 0, 0   # (consec_introuvables n'est plus utilisé)
     stats = {"ok": 0, "baisse": 0, "hausse": 0, "introuvable": 0, "echec": 0}
     for _, _, cfg, reg, r, avant, v in liste:
         if time.time() - t0 > reg["duree_max_minutes"] * 60:
@@ -116,15 +114,9 @@ def main():
                 continue
         consec_echecs = 0
         if introuvable:
-            consec_introuvables += 1
-            n = (v["introuvable_n"] if v and v["statut"] == "introuvable" else 0) + 1
-            sorties.append([today.isoformat(), r["type"], r["depart"], r["destination"], r["aller"],
-                            r["retour"], avant, avant, "introuvable", n, ""])
-            stats["introuvable"] += 1
-            if consec_introuvables >= 12:   # probablement un blocage de Google, pas 12 vols disparus
-                print("12 vols « introuvables » d'affilée : blocage probable, ces constats sont ignorés.")
-                sorties = sorties[:-12]
-                break
+            stats["introuvable"] += 1   # simple comptage pour le journal : rien n'est enregistré
+            search.pause(reg)
+            continue
         else:
             consec_introuvables = 0
             prix, _, info = res
@@ -149,9 +141,9 @@ def main():
             for s in sorties:
                 fh.write(",".join(str(x) for x in s) + "\n")
     print(f"Vérifiées : {len(sorties)}. Confirmées {stats['ok']}, en baisse {stats['baisse']}, "
-          f"en hausse {stats['hausse']}, introuvables {stats['introuvable']}, échecs {stats['echec']}. "
+          f"en hausse {stats['hausse']}, non retrouvées (ignorées) {stats['introuvable']}, échecs {stats['echec']}. "
           f"({(time.time() - t0) / 60:.1f} min)")
-    if not sorties and liste:
+    if not sorties and stats["echec"] and liste:
         sys.exit(1)
 
 
