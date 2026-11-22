@@ -140,3 +140,10 @@ limites:
   routes_vides_avant_pause: 3
   routes_vides_jours_pause: 30
   max_notifications: 15       # offres envoyées au maximum par lancement (les meilleures d'abord)
+
+# --- Revérification des offres affichées sur le site (verifier.py, 4 fois par jour) ---
+verification:
+  recherches_max: 200          # offres revérifiées par lancement (les moins récemment vérifiées d'abord)
+  ratio_max: 1.3               # on ne revérifie que les offres jusqu'à 1,3 x le plafond de leur zone
+  jours: 7                     # offres relevées ces 7 derniers jours
+  duree_max_minutes: 60
