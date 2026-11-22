@@ -74,21 +74,17 @@ def construire(today):
             v = verifs.get((r["type"], r["depart"], r["destination"], r["aller"], r["retour"]))
             if not v or v["verifie"] < r["releve"]:
                 continue
+            if v["statut"] == "introuvable":   # option abandonnée : on ignore (anciennes lignes éventuelles)
+                continue
             r = dict(r)
             r["_verif"] = v["verifie"]
-            if v["statut"] == "introuvable":
-                if v["introuvable_n"] >= 2:
-                    del meilleurs[ck]       # introuvable deux fois de suite : masquée
-                    continue
-                r["_note"] = "d"            # doute : à revérifier
-            else:
-                if v["apres"] != v["avant"]:
-                    r["_ancien"] = v["avant"]
-                r["prix"] = v["apres"]
-                r["_note"] = {"baisse": "b", "hausse": "h"}.get(v["statut"], "o")
-                if v["statut"] == "baisse":  # une baisse = une nouvelle offre : elle remonte en tête
-                    r["releve"] = v["verifie"]
-                    r["_rel"] = date.fromisoformat(v["verifie"])
+            if v["apres"] != v["avant"]:
+                r["_ancien"] = v["avant"]
+            r["prix"] = v["apres"]
+            r["_note"] = {"baisse": "b", "hausse": "h"}.get(v["statut"], "o")
+            if v["statut"] == "baisse":  # une baisse = une nouvelle offre : elle remonte en tête
+                r["releve"] = v["verifie"]
+                r["_rel"] = date.fromisoformat(v["verifie"])
             meilleurs[ck] = r
         groupes, derniers = {}, {}
         for ck, r in meilleurs.items():
@@ -211,7 +207,6 @@ function note(x){
   if(etat==="b")return `<div class="m ok">📉 Baissé de ${ancien} € à ${p} € (vérifié le ${fd(verif)})</div>`;
   if(etat==="h")return `<div class="m warn">📈 Monté de ${ancien} € à ${p} € (vérifié le ${fd(verif)})</div>`;
   if(etat==="o")return `<div class="m">✔️ Prix confirmé le ${fd(verif)}</div>`;
-  if(etat==="d")return `<div class="m warn">⚠️ Introuvable à la dernière vérification (${fd(verif)}) : à revérifier</div>`;
   return "";
 }
 function card(x){
@@ -223,7 +218,7 @@ function card(x){
 }
 function sub(x){
   const [cat,o,dest,a,b,p,seen,cie,tot,plaf]=x;
-  return `<div class="sub"><div><div>${fj(a)} → ${fj(b)} · ${nuits(a,b)} nuits <span class="m">· ${D.cats[cat]}</span></div><div class="m">${D.departs[o]} · ${flag(p,plaf)} ${x[11]==="b"?"· 📉 baissé de "+x[10]+" €":x[11]==="h"?"· 📈 monté de "+x[10]+" €":x[11]==="d"?"· ⚠️ à revérifier":""} · ≈ ${tot} € tout compris · ${cie||"?"} · vu le ${fd(seen)} · <a href="${lien(o,dest,a,b,cat)}" target="_blank" rel="noopener">Google Flights</a></div></div><div class="px ${p<=plaf?"ok":""}">${p} €</div></div>`;
+  return `<div class="sub"><div><div>${fj(a)} → ${fj(b)} · ${nuits(a,b)} nuits <span class="m">· ${D.cats[cat]}</span></div><div class="m">${D.departs[o]} · ${flag(p,plaf)} ${x[11]==="b"?"· 📉 baissé de "+x[10]+" €":x[11]==="h"?"· 📈 monté de "+x[10]+" €":""} · ≈ ${tot} € tout compris · ${cie||"?"} · vu le ${fd(seen)} · <a href="${lien(o,dest,a,b,cat)}" target="_blank" rel="noopener">Google Flights</a></div></div><div class="px ${p<=plaf?"ok":""}">${p} €</div></div>`;
 }
 function render(){
   const q=norm($("q").value.trim()),cat=+$("cat").value,dep=$("dep").value,tri=$("tri").value,seul=$("ok").value==="1",k=$("kont").value,pa=$("pays").value;
