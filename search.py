@@ -578,6 +578,7 @@ def main(config_path, data_dir):
     notif_dest = load_json(notif_file, {})
     vides = history.setdefault("_vides", {})
     minimums = history.setdefault("_min", {})   # meilleur prix relevé par route depuis le début
+    echecs_route = history.setdefault("_echecs", {})   # échecs répétés par route, sans aucun succès
     obs = []                                    # prix relevés pendant ce lancement
 
     # on oublie les combinaisons dont le départ est passé
@@ -641,6 +642,7 @@ def main(config_path, data_dir):
     deals, ok, fails, hors = [], 0, 0, 0
     empties, succeeded, recent_empty = [], set(), []
     consec_echecs, bloque, refroidi = 0, False, 0
+    echecs_serie = deque(maxlen=40)   # dernières combinaisons en échec
     recent = deque(maxlen=30)   # 1 = échec, 0 = réponse de Google, sur les 30 dernières recherches
 
     def facteur_pause():
@@ -671,6 +673,21 @@ def main(config_path, data_dir):
         if erreur is not None:
             fails += 1
             consec_echecs += 1
+            # Une combinaison en échec doit passer à la fin de la file : sinon les mêmes recherches
+            # qui échouent toujours reviennent en tête à chaque lancement et bloquent tout le reste.
+            vus[combo_key(t)] = now
+            echecs_serie.append(combo_key(t))
+            if len(recent) >= 10 and sum(recent) / len(recent) < 0.5:
+                # Google répond à la majorité des recherches : si CETTE route échoue encore et encore
+                # sans jamais réussir, elle est illisible (probablement aucun vol) -> mise de côté 14 jours
+                vk = cle_vides(kind, o, dest)
+                e = echecs_route.setdefault(vk, {"n": 0})
+                e["n"] += 1
+                if e["n"] >= lim.get("routes_echecs_avant_pause", 5):
+                    reste_jours = 14
+                    debut_pause = today - timedelta(days=max(0, lim["routes_vides_jours_pause"] - reste_jours))
+                    vides[vk] = {"n": lim["routes_vides_avant_pause"], "d": debut_pause.isoformat()}
+                    echecs_route.pop(vk, None)
             recent.append(1)
             if fails <= 8:        # on n'affiche que les premières erreurs
                 print(f"échec {o}-{dest} {d}: {str(erreur)[:100]}")
@@ -688,6 +705,8 @@ def main(config_path, data_dir):
                     recent.clear()
                     continue
                 print("Toujours refusé après les pauses : arrêt, on réessaiera au prochain lancement.")
+                for ck in echecs_serie:   # un vrai blocage : ces recherches ne comptent pas comme faites
+                    vus.pop(ck, None)
                 break
             pause(lim, facteur_pause())
             continue
@@ -719,6 +738,7 @@ def main(config_path, data_dir):
         ok += 1
         succeeded.add(vkey)
         vides.pop(vkey, None)
+        echecs_route.pop(vkey, None)
         price, opinion, info = res
         cie = re.sub(r"[,\n]", "/", info.get("compagnie", "")).strip()[:40]
         obs.append((today.isoformat(), kind[0], o, dest, d.isoformat(), r.isoformat(), price, cie))
