@@ -1,13 +1,22 @@
 name: Page de recherche des offres
 
 on:
+  # la page est reconstruite dès qu'un lancement de recherche ou de vérification se termine
+  workflow_run:
+    workflows: ["Court courrier (week-ends)", "Long courrier (avril, été)", "Vérification des prix"]
+    types: [completed]
   schedule:
-    # deux fois par jour (heures UTC)
-    - cron: "30 6,18 * * *"
+    # filet de sécurité : une fois par jour (heure UTC)
+    - cron: "30 6 * * *"
   workflow_dispatch:       # permet de le lancer à la main (bouton "Run workflow")
 
 permissions:
   contents: write
+
+# une seule reconstruction à la fois (évite les conflits quand deux lancements finissent ensemble)
+concurrency:
+  group: vols-synthese
+  cancel-in-progress: false
 
 jobs:
   page:
